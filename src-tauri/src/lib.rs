@@ -28,6 +28,7 @@ fn hide_console_window(command: &mut Command) -> &mut Command {
 
 struct AppState {
     rows: Mutex<Vec<RawRow>>,
+    manual_labels: Mutex<Vec<ParsedLabel>>,
     current_file: Mutex<String>,
 }
 
@@ -60,6 +61,7 @@ fn load_excel(
     let (rows, mapping) = excel_parser::parse_excel(&file_path, &sheet_name)?;
 
     *state.rows.lock().unwrap() = rows.clone();
+    state.manual_labels.lock().unwrap().clear();
     *state.current_file.lock().unwrap() = file_path.clone();
 
     let mut recent = settings::load_recent_files();
@@ -93,7 +95,8 @@ fn parse_all_labels(
     cari_max_words: usize,
 ) -> Vec<ParsedLabel> {
     let rows = state.rows.lock().unwrap();
-    rows.iter()
+    let mut result: Vec<ParsedLabel> = rows
+        .iter()
         .map(|row| {
             let parsed = satir_parser::parse_satir_aciklama(
                 &row.satir_aciklama,
@@ -116,7 +119,18 @@ fn parse_all_labels(
                 print_count: parsed.print_count,
             }
         })
-        .collect()
+        .collect();
+
+    // Manuel eklenen etiketleri listenin sonuna iliştir
+    let manual = state.manual_labels.lock().unwrap();
+    result.extend(manual.iter().cloned());
+
+    result
+}
+
+#[tauri::command]
+fn add_manual_label(label: ParsedLabel, state: State<AppState>) {
+    state.manual_labels.lock().unwrap().push(label);
 }
 
 #[tauri::command]
@@ -386,6 +400,7 @@ pub fn run() {
         })
         .manage(AppState {
             rows: std::sync::Mutex::new(Vec::new()),
+            manual_labels: std::sync::Mutex::new(Vec::new()),
             current_file: std::sync::Mutex::new(String::new()),
         })
         .invoke_handler(tauri::generate_handler![
@@ -394,6 +409,7 @@ pub fn run() {
             load_excel,
             parse_satir,
             parse_all_labels,
+            add_manual_label,
             save_label_settings,
             load_label_settings,
             save_settings_to_file,

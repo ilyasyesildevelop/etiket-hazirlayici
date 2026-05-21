@@ -31,6 +31,9 @@
       </div>
     </div>
     <div class="top-right">
+      <button id="btnManualLabel" class="btn btn-secondary" style="margin-right: 10px;">
+        <span class="material-icons-round">add_circle_outline</span> Özel Etiket
+      </button>
       <button id="btnRecent" class="btn btn-ghost"><span class="material-icons-round">history</span> Son Yüklenenler</button>
       <div id="recentDropdown" class="dropdown-menu hidden"></div>
     </div>
@@ -210,6 +213,57 @@
       <span id="statusRowCount">Kayıt: 0</span>
       <span class="status-sep">│</span>
       <span id="statusSelected">Seçili: 0</span>
+    </div>
+  </div>
+
+  <!-- MANUEL ETİKET MODAL -->
+  <div id="manualModal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3><span class="material-icons-round">add_circle_outline</span> Özel Etiket Ekle</h3>
+        <button id="btnCloseModal" class="btn-icon"><span class="material-icons-round">close</span></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Cari Ünvan</label>
+          <input type="text" id="mCari" placeholder="Örn: X MOBİLYA" />
+        </div>
+        <div class="form-group">
+          <label>Malzeme / Ürün</label>
+          <input type="text" id="mMalz" placeholder="Örn: VNT 2704 L.BEIGE" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Ebat</label>
+            <input type="text" id="mEbat" placeholder="Örn: 80x150" />
+          </div>
+          <div class="form-group">
+            <label>İşlem</label>
+            <input type="text" id="mIslem" placeholder="Örn: ÇİFT BRD" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Miktar (Adet/m²)</label>
+            <input type="text" id="mMiktar" placeholder="Örn: 1 ADET" />
+          </div>
+          <div class="form-group">
+            <label>Kopya Sayısı</label>
+            <input type="number" id="mKopya" min="1" value="1" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Müşteri Adı (MŞ)</label>
+          <input type="text" id="mMusteri" placeholder="Örn: AYŞE YILMAZ" />
+        </div>
+        <div class="form-group">
+          <label>Diğer Açıklamalar</label>
+          <input type="text" id="mDiger" placeholder="..." />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnSaveManual" class="btn btn-action btn-solid">Listeye Ekle</button>
+      </div>
     </div>
   </div>
 

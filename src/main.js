@@ -57,6 +57,9 @@ function initUI() {
   $('btnLoadSettings').onclick = loadSettingsUI;
   $('btnResetSettings').onclick = async () => { S.settings = await invoke('get_default_settings'); refreshAll(); };
   $('btnRecent').onclick = () => $('recentDropdown').classList.toggle('hidden');
+  $('btnManualLabel').onclick = () => { $('manualModal').classList.remove('hidden'); };
+  $('btnCloseModal').onclick = () => { $('manualModal').classList.add('hidden'); };
+  $('btnSaveManual').onclick = saveManualLabel;
   $('copies').onchange = e => S.settings.copies = +e.target.value;
   initAbout();
   document.querySelectorAll('.tab-btn').forEach(b => b.onclick = () => {
@@ -230,7 +233,10 @@ async function loadSheet() {
   setStatus('loading', 'Yükleniyor...');
   try {
     const data = await invoke('load_excel', { filePath: path, sheetName: sheet });
-    S.rows = data.rows; S.sel = new Set(data.rows.map((_, i) => i)); S.page = 0;
+    S.rows = data.rows; 
+    S.manualRows = []; 
+    S.sel = new Set(data.rows.map((_, i) => i)); 
+    S.page = 0;
     await reparse();
     renderTable(); S.curIdx = 0; renderPreview();
     setStatus('success', `${data.total} kayıt yüklendi.`);
@@ -248,11 +254,69 @@ async function reparse() {
   renderPreview(); updateExample();
 }
 
-function getFiltered() {
-  if (!S.search) return S.rows.map((r, i) => ({ ...r, idx: i }));
-  const t = S.search.toLowerCase();
-  return S.rows.map((r, i) => ({ ...r, idx: i })).filter(r => (r.cari_unvan + r.malz_aciklama + r.satir_aciklama).toLowerCase().includes(t));
+// Manuel kayıtları frontend state'inde tutuyoruz (önizleme/tablo için)
+S.manualRows = S.manualRows || [];
+
+async function saveManualLabel() {
+  const cari   = ($('mCari').value   || '').trim();
+  const malz   = ($('mMalz').value   || '').trim();
+  const ebat   = ($('mEbat').value   || '').trim();
+  const islem  = ($('mIslem').value  || '').trim();
+  const miktar = ($('mMiktar').value || '').trim();
+  const kopya  = Math.max(1, parseInt($('mKopya').value) || 1);
+  const musteri= ($('mMusteri').value|| '').trim();
+  const diger  = ($('mDiger').value  || '').trim();
+
+  const isMetre = miktar.toLowerCase().includes('m²') || miktar.toLowerCase().includes('m2');
+
+  const label = {
+    cari_unvan:         cari,
+    malz_aciklama:      malz,
+    ebat:               ebat,
+    islem:              islem,
+    adet:               isMetre ? '' : (miktar || '1 ADET'),
+    metrekare:          isMetre ? miktar : '',
+    musteri_adi:        musteri,
+    diger_aciklamalar:  diger,
+    bekleyen_siparis:   '',
+    print_count:        kopya,
+  };
+
+  try {
+    await invoke('add_manual_label', { label });
+    // Arka planda kaydettik; şimdi frontend listesini de güncelle
+    const manualIdx = S.rows.length + S.manualRows.length;
+    S.manualRows.push({
+      cari_unvan:       cari,
+      malz_aciklama:    malz,
+      satir_aciklama:   islem,
+      bekleyen_siparis: miktar,
+      isManual:         true,
+      idx:              manualIdx,
+    });
+    S.sel.add(manualIdx);
+    // Etiket listesini de yenile
+    S.labels = await invoke('parse_all_labels', { rules: S.settings.satir_rules, cariMaxWords: S.settings.cari_max_words });
+    renderTable();
+    renderPreview();
+    updSel();
+    // Formu temizle ve kapat
+    ['mCari','mMalz','mEbat','mIslem','mMiktar','mMusteri','mDiger'].forEach(id => { $(id).value = ''; });
+    $('mKopya').value = '1';
+    $('manualModal').classList.add('hidden');
+    setStatus('success', `Manuel etiket eklendi: ${cari || malz || '(isimsiz)'}`);
+  } catch(e) { setStatus('error', '' + e); }
 }
+
+function getFiltered() {
+  const baseRows = S.rows.map((r, i) => ({ ...r, idx: i }));
+  const manualRows = (S.manualRows || []).map(r => ({ ...r }));
+  const allRows = [...baseRows, ...manualRows];
+  if (!S.search) return allRows;
+  const t = S.search.toLowerCase();
+  return allRows.filter(r => (r.cari_unvan + r.malz_aciklama + r.satir_aciklama).toLowerCase().includes(t));
+}
+
 
 function renderTable() {
   const f = getFiltered(), tp = Math.max(1, Math.ceil(f.length / S.pageSize));
@@ -261,12 +325,15 @@ function renderTable() {
   const tb = $('tableBody');
   if (!pg.length) { tb.innerHTML = '<tr class="empty-row"><td colspan="6"><div class="empty-state"><span class="material-icons-round">search_off</span><p>Kayıt yok</p></div></td></tr>'; }
   else {
-    tb.innerHTML = pg.map(r => `<tr class="${S.sel.has(r.idx)?'selected':''} ${S.curIdx===r.idx?'active':''}" data-idx="${r.idx}">
+    tb.innerHTML = pg.map(r => {
+      const numBadge = r.isManual ? `<span style="background:var(--secondary);color:white;padding:2px 4px;border-radius:4px;font-size:10px;">Elle</span>` : `${r.idx+1}`;
+      return `<tr class="${S.sel.has(r.idx)?'selected':''} ${S.curIdx===r.idx?'active':''}" data-idx="${r.idx}">
       <td class="col-check"><input type="checkbox" ${S.sel.has(r.idx)?'checked':''}/></td>
-      <td class="col-num">${r.idx+1}</td><td class="col-cari" title="${esc(r.cari_unvan)}">${esc(r.cari_unvan)}</td>
+      <td class="col-num">${numBadge}</td><td class="col-cari" title="${esc(r.cari_unvan)}">${esc(r.cari_unvan)}</td>
       <td class="col-malz" title="${esc(r.malz_aciklama)}">${esc(r.malz_aciklama)}</td>
       <td class="col-satir" title="${esc(r.satir_aciklama)}">${esc(r.satir_aciklama)}</td>
-      <td class="col-bekleyen">${esc(r.bekleyen_siparis)}</td></tr>`).join('');
+      <td class="col-bekleyen">${esc(r.bekleyen_siparis)}</td></tr>`;
+    }).join('');
     tb.querySelectorAll('tr[data-idx]').forEach(tr => {
       const idx = +tr.dataset.idx;
       tr.querySelector('input').onchange = e => { e.target.checked ? S.sel.add(idx) : S.sel.delete(idx); tr.classList.toggle('selected', e.target.checked); updSel(); };

@@ -172,6 +172,15 @@ body.drag-over::after {
 }
 .btn-primary:hover { background: rgba(255,255,255,0.28); }
 
+.btn-solid {
+  background: var(--primary);
+  color: white;
+  border: 1px solid var(--primary-dark);
+}
+.btn-solid:hover {
+  background: var(--primary-light);
+}
+
 .btn-accent {
   background: var(--accent);
   color: white;
@@ -968,4 +977,109 @@ input[type="checkbox"] {
 .about-details dd {
   color: var(--text-primary);
   font-size: 12px;
+}
+
+/* ===== MODAL STYLES ===== */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(2px);
+  opacity: 1;
+  transition: opacity 0.2s;
+}
+.modal-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.modal-content {
+  background: var(--bg-card);
+  width: 480px;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+  display: flex;
+  flex-direction: column;
+  transform: translateY(0);
+  transition: transform 0.2s;
+}
+.modal-overlay.hidden .modal-content {
+  transform: translateY(20px);
+}
+.modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.modal-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-light);
+  background: #f8f9fa;
+  border-radius: 0 0 8px 8px;
+}
+.form-row {
+  display: flex;
+  gap: 16px;
+}
+.form-row .form-group {
+  flex: 1;
+}
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.form-group label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.form-group input {
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  font-size: 14px;
+  width: 100%;
+  background: var(--bg-main);
+  color: var(--text-primary);
+  box-sizing: border-box;
+  transition: all 0.2s;
+}
+.form-group input:focus {
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.1);
+}
+.btn-icon {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+}
+.btn-icon:hover {
+  background: rgba(0,0,0,0.05);
+  color: var(--text-primary);
 }
