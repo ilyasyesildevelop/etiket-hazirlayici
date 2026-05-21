@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Etiket Hazırlayıcı</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- TOP BAR -->
+  <header id="topBar">
+    <div class="top-left">
+      <div class="app-logo">
+        <span class="material-icons-round">label</span>
+        <span class="app-title">Etiket Hazırlayıcı</span>
+      </div>
+      <div class="file-section">
+        <label class="field-label">Dosya</label>
+        <input type="text" id="filePath" readonly placeholder="Excel dosyası seçin..." />
+        <button id="btnOpenFile" class="btn btn-primary">
+          <span class="material-icons-round">folder_open</span> Dosya Aç
+        </button>
+        <label class="field-label">Sayfa</label>
+        <select id="sheetSelect" class="select-input"><option value="">Sayfa seçin</option></select>
+        <button id="btnLoad" class="btn btn-accent">
+          <span class="material-icons-round">download</span> Yükle
+        </button>
+      </div>
+    </div>
+    <div class="top-right">
+      <button id="btnRecent" class="btn btn-ghost"><span class="material-icons-round">history</span> Son Yüklenenler</button>
+      <div id="recentDropdown" class="dropdown-menu hidden"></div>
+    </div>
+  </header>
+
+  <!-- MAIN CONTENT -->
+  <main id="mainContent">
+    <section id="dataPanel">
+      <div class="panel-header">
+        <h2><span class="material-icons-round">table_chart</span> Veri Listesi</h2>
+        <div class="table-controls">
+          <div class="search-box">
+            <span class="material-icons-round">search</span>
+            <input type="text" id="searchInput" placeholder="Ara..." />
+          </div>
+          <span id="selectionInfo" class="selection-info">Seçili: 0 / 0</span>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table id="dataTable">
+          <thead><tr>
+            <th class="col-check"><input type="checkbox" id="selectAll" /></th>
+            <th class="col-num">#</th>
+            <th class="col-cari" style="width:120px">CARİ ÜNVAN<div class="resize-handle"></div></th>
+            <th class="col-malz" style="width:200px">MALZ. AÇIKLAMA<div class="resize-handle"></div></th>
+            <th class="col-satir">SATIR AÇIKLAMA<div class="resize-handle"></div></th>
+            <th class="col-bekleyen" style="padding-right:8px">BEK. SİPARİŞ</th>
+          </tr></thead>
+          <tbody id="tableBody">
+            <tr class="empty-row"><td colspan="6"><div class="empty-state">
+              <span class="material-icons-round">upload_file</span><p>Excel dosyası yükleyin</p>
+            </div></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-footer">
+        <span id="totalInfo">Toplam: 0 kayıt</span>
+        <div class="pagination">
+          <button id="btnPrevPage" class="btn btn-small btn-ghost" disabled><span class="material-icons-round">chevron_left</span></button>
+          <span id="pageInfo">1 / 1</span>
+          <button id="btnNextPage" class="btn btn-small btn-ghost" disabled><span class="material-icons-round">chevron_right</span></button>
+          <select id="pageSizeSelect" class="select-input select-small">
+            <option value="25">25</option><option value="50" selected>50</option><option value="100">100</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section id="previewPanel">
+      <div class="panel-header">
+        <h2><span class="material-icons-round">preview</span> Canlı Önizleme</h2>
+        <span id="labelSizeInfo" class="label-size-badge">80 × 50 mm</span>
+      </div>
+      <div class="preview-area"><canvas id="labelCanvas"></canvas></div>
+      <div class="preview-controls">
+        <div class="zoom-control">
+          <button id="btnRotate" class="btn btn-small btn-ghost" title="Önizlemeyi Döndür" style="margin-right: 4px; padding: 2px 6px;"><span class="material-icons-round" style="font-size:18px;">rotate_90_degrees_cw</span></button>
+          <span class="material-icons-round" style="cursor:pointer" onclick="document.getElementById('zoomSlider').value=Math.max(50,+document.getElementById('zoomSlider').value-10);document.getElementById('zoomSlider').dispatchEvent(new Event('input'))">zoom_out</span>
+          <input type="range" id="zoomSlider" min="30" max="250" value="80" />
+          <span class="material-icons-round" style="cursor:pointer" onclick="document.getElementById('zoomSlider').value=Math.min(250,+document.getElementById('zoomSlider').value+10);document.getElementById('zoomSlider').dispatchEvent(new Event('input'))">zoom_in</span>
+          <span id="zoomValue">80%</span>
+        </div>
+        <div class="nav-controls">
+          <button id="btnPrevLabel" class="btn btn-small btn-ghost" title="Önceki Etiket"><span class="material-icons-round">chevron_left</span></button>
+          <span id="labelNavInfo" style="padding: 0 4px; font-weight: 600;">0 / 0</span>
+          <button id="btnNextLabel" class="btn btn-small btn-ghost" title="Sonraki Etiket"><span class="material-icons-round">chevron_right</span></button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- BOTTOM PANEL -->
+  <footer id="bottomPanel">
+    <div class="settings-panel">
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="tabLabelSettings"><span class="material-icons-round">straighten</span> Etiket Ayarları</button>
+        <button class="tab-btn" data-tab="tabFieldWidths"><span class="material-icons-round">grid_view</span> Alan Genişlikleri</button>
+        <button class="tab-btn" data-tab="tabSatirRules"><span class="material-icons-round">rule</span> Genel Ayarlar</button>
+      </div>
+
+      <!-- Tab 1: Label Settings (widths + font sizes combined) -->
+      <div id="tabLabelSettings" class="tab-content active">
+        <div class="settings-grid settings-grid--label-tab">
+          <div class="settings-group settings-group--general">
+            <h3>Etiket Boyutu & Genel</h3>
+            <div class="size-inputs">
+              <div class="input-group"><label>Genişlik (mm)</label><input type="number" id="labelWidth" value="80" min="20" max="200" /></div>
+              <div class="input-group"><label>Yükseklik (mm)</label><input type="number" id="labelHeight" value="50" min="20" max="200" /></div>
+              <div class="input-group"><label>Yazı Tipi</label>
+                <select id="globalFont" class="select-input">
+                  <option value="Tahoma" selected>Tahoma</option>
+                  <option value="Arial Black">Arial Black</option>
+                  <option value="Arial">Arial</option>
+                  <option value="Verdana">Verdana</option>
+                </select>
+              </div>
+              <div class="input-group"><label>Renk</label><input type="color" id="globalColor" value="#000000" /></div>
+            </div>
+            <div class="size-inputs" style="margin-top:8px">
+              <div class="input-group"><label>Başlık Metni</label><input type="text" id="headerText" value="" class="text-input" style="width:120px" /></div>
+              <div class="input-group"><label>Başlık Punto</label><input type="number" id="headerFontSize" value="6" min="4" max="24" style="width:70px" /></div>
+              <div class="input-group"><label>Cari Maks. Kelime</label><input type="number" id="cariMaxWords" value="4" min="0" max="10" style="width:70px" /></div>
+            </div>
+            <div class="size-inputs" style="margin-top:8px">
+              <div class="input-group"><label>Kenar Boşluğu (mm)</label><input type="number" id="labelMargin" value="1.5" min="0" max="5" step="0.5" style="width:120px" /></div>
+              <div class="input-group"><label>Sıra/Adet Punto</label><input type="number" id="sequenceFontSize" value="7" min="4" max="24" style="width:70px" /></div>
+              <div class="input-group" style="flex-direction:row;align-items:center;height:43px;padding-top:14px;width:70px;gap:4px"><input type="checkbox" id="chkShowDate" checked /><label>Tarih</label></div>
+              <div class="input-group" style="flex-direction:row;align-items:center;height:43px;padding-top:14px;width:70px;gap:4px"><input type="checkbox" id="chkShowPageNo" checked /><label>Sayfa No</label></div>
+            </div>
+          </div>
+          <div class="settings-group settings-group--printer" style="opacity:0.45;pointer-events:none;">
+            <h3>Yazıcı <span style="font-size:10px;background:#FB8C00;color:#fff;border-radius:8px;padding:1px 7px;vertical-align:middle;font-weight:600">Yakında</span></h3>
+            <div class="input-group"><label>Yazıcı</label>
+              <select id="printerSelect" class="select-input" disabled><option value="">Yazıcı seçin...</option></select></div>
+            <div class="input-group" style="margin-top:8px"><label>Kopya Sayısı</label><input type="number" id="copies" value="1" min="1" max="99" disabled /></div>
+          </div>
+          <div class="settings-group settings-group--align">
+            <h3>Hizalama</h3>
+            <div class="align-buttons">
+              <button class="align-btn" data-align="left"><span class="material-icons-round">format_align_left</span></button>
+              <button class="align-btn active" data-align="center"><span class="material-icons-round">format_align_center</span></button>
+              <button class="align-btn" data-align="right"><span class="material-icons-round">format_align_right</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Field Widths -->
+      <div id="tabFieldWidths" class="tab-content">
+        <div class="settings-grid">
+          <div class="settings-group">
+            <h3>Alan Genişlikleri & Font Büyüklükleri</h3>
+            <div id="fieldWidthSliders"></div>
+            <button id="btnAutoDistribute" class="btn btn-small btn-ghost"><span class="material-icons-round">auto_fix_high</span> Otomatik Dağıt</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 3: SATIR Rules -->
+      <div id="tabSatirRules" class="tab-content">
+        <div class="settings-grid">
+          <div class="settings-group">
+            <h3>SATIR_ACIKLAMA Kuralları</h3>
+            <div class="rule-row"><input type="checkbox" id="chkSplitChar" checked /><label>Bölme karakteri</label>
+              <select id="splitCharSelect" class="select-input select-small"><option value="/">/</option><option value=",">,</option><option value=":">:</option></select></div>
+            <div class="rule-row"><input type="checkbox" id="chkMoveLong" checked /><label>Uzun metni küçük alana taşı</label></div>
+            <div class="input-group"><label>Maks. karakter</label><input type="number" id="maxChars" value="80" min="20" max="200" /></div>
+          </div>
+          <div class="settings-group">
+            <h3>Önizleme</h3>
+            <div id="exampleOutput" class="satir-example"></div>
+          </div>
+        </div>
+      </div>
+
+      </div>
+    </div>
+
+    <div class="action-panel">
+      <button id="btnPDF" class="btn btn-action btn-pdf"><span class="material-icons-round">picture_as_pdf</span> PDF Oluştur</button>
+      <button id="btnPrint" class="btn btn-action btn-print" disabled style="opacity:0.4;cursor:not-allowed;" title="Bu özellik yakında eklenecek"><span class="material-icons-round">print</span> Yazdır</button>
+      <hr class="action-divider" />
+      <button id="btnSaveSettings" class="btn btn-ghost"><span class="material-icons-round">save</span> Ayarları Kaydet</button>
+      <button id="btnLoadSettings" class="btn btn-ghost"><span class="material-icons-round">settings_backup_restore</span> Ayarları Yükle</button>
+      <button id="btnResetSettings" class="btn btn-ghost"><span class="material-icons-round">restart_alt</span> Varsayılanlara Dön</button>
+    </div>
+  </footer>
+
+  <div id="statusBar">
+    <div class="status-left">
+      <span class="material-icons-round status-icon" id="statusIcon">info</span>
+      <span id="statusText">Hazır.</span>
+    </div>
+    <div class="status-right">
+      <span id="statusLabelSize">Etiket: 80 × 50 mm</span>
+      <span class="status-sep">│</span>
+      <span id="statusRowCount">Kayıt: 0</span>
+      <span class="status-sep">│</span>
+      <span id="statusSelected">Seçili: 0</span>
+    </div>
+  </div>
+
+  <script src="main.js"></script>
+</body>
+</html>

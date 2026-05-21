@@ -1,0 +1,16 @@
+{
+  "name": "etiket-hazırlayici",
+  "private": true,
+  "version": "26.6.0",
+  "type": "module",
+  "scripts": {
+    "dev": ".\\node_modules\\.bin\\tauri dev",
+    "build:debug": ".\\node_modules\\.bin\\tauri build -d --no-bundle",
+    "build:release": ".\\node_modules\\.bin\\tauri build --no-bundle",
+    "package:portable": "npm run build:release && powershell -NoProfile -Command \"if(-not (Test-Path dist)){New-Item -ItemType Directory -Path dist | Out-Null}; Copy-Item -Path 'src-tauri\\target\\release\\etiket-hazirlayici.exe' -Destination 'dist\\EtiketHazirlayiciPortable.exe' -Force\"",
+    "package:installer": "npm run build:release && \"C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe\" \"src-tauri/etiket_hazirlayici_installer.iss\""
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

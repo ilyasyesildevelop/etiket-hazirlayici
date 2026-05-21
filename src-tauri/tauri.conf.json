@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Etiket Hazırlayıcı",
+  "version": "26.6.0",
+  "identifier": "com.ekomak.etiket-hazırlayici",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Etiket Hazırlayıcı",
+        "width": 1280,
+        "height": 750,
+        "minWidth": 1100,
+        "minHeight": 650,
+        "center": true,
+        "decorations": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "Green Labs Development Technology, Inc",
+    "copyright": "Copyright © 2026 İlyas Yeşil and Green Labs Development Technology, Inc. All rights reserved.",
+    "shortDescription": "Etiket Hazırlayıcı",
+    "longDescription": "Etiket Hazırlayıcı - Developed by İlyas Yeşil for Green Labs Development Technology, Inc.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
