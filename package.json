@@ -12,5 +12,8 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"
+  },
+  "dependencies": {
+    "firebase": "^12.13.0"
   }
 }

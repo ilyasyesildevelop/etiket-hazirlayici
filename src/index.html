@@ -8,6 +8,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
+  <!-- Firebase CDN (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
   <!-- TOP BAR -->
@@ -50,6 +53,9 @@
             <input type="text" id="searchInput" placeholder="Ara..." />
           </div>
           <span id="selectionInfo" class="selection-info">Seçili: 0 / 0</span>
+          <button id="btnClearList" class="btn btn-small btn-ghost" style="color:#d32f2f; margin-left:8px;" title="Listeyi Temizle">
+            <span class="material-icons-round" style="font-size:18px;">delete_sweep</span> Temizle
+          </button>
         </div>
       </div>
       <div class="table-wrapper">
@@ -61,9 +67,10 @@
             <th class="col-malz" style="width:200px">MALZ. AÇIKLAMA<div class="resize-handle"></div></th>
             <th class="col-satir">SATIR AÇIKLAMA<div class="resize-handle"></div></th>
             <th class="col-bekleyen" style="padding-right:8px">BEK. SİPARİŞ</th>
+            <th class="col-actions" style="width:75px; text-align:center;">İŞLEM</th>
           </tr></thead>
           <tbody id="tableBody">
-            <tr class="empty-row"><td colspan="6"><div class="empty-state">
+            <tr class="empty-row"><td colspan="7"><div class="empty-state">
               <span class="material-icons-round">upload_file</span><p>Excel dosyası yükleyin</p>
             </div></td></tr>
           </tbody>
@@ -226,11 +233,13 @@
       <div class="modal-body">
         <div class="form-group">
           <label>Cari Ünvan</label>
-          <input type="text" id="mCari" placeholder="Örn: X MOBİLYA" />
+          <input type="text" id="mCari" placeholder="Örn: X MOBİLYA" list="cariDatalist" autocomplete="off" />
+          <datalist id="cariDatalist"></datalist>
         </div>
         <div class="form-group">
           <label>Malzeme / Ürün</label>
-          <input type="text" id="mMalz" placeholder="Örn: VNT 2704 L.BEIGE" />
+          <input type="text" id="mMalz" placeholder="Örn: VNT 2704 L.BEIGE" list="malzDatalist" autocomplete="off" />
+          <datalist id="malzDatalist"></datalist>
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -239,17 +248,18 @@
           </div>
           <div class="form-group">
             <label>İşlem</label>
-            <input type="text" id="mIslem" placeholder="Örn: ÇİFT BRD" />
+            <input type="text" id="mIslem" placeholder="Örn: ÇİFT BRD" list="islemDatalist" autocomplete="off" />
+            <datalist id="islemDatalist"></datalist>
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Miktar (Adet/m²)</label>
-            <input type="text" id="mMiktar" placeholder="Örn: 1 ADET" />
+            <label>Metrekare</label>
+            <input type="text" id="mMetrekare" placeholder="Örn: 4.5 m² (Boşsa 1 ADET yazar)" />
           </div>
           <div class="form-group">
-            <label>Kopya Sayısı</label>
-            <input type="number" id="mKopya" min="1" value="1" />
+            <label>Adet (Kaç etiket basılacak)</label>
+            <input type="number" id="mAdet" value="1" min="1" />
           </div>
         </div>
         <div class="form-group">
@@ -266,7 +276,10 @@
       </div>
     </div>
   </div>
-
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  
   <script src="main.js"></script>
 </body>
 </html>

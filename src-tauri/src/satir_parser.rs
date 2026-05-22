@@ -265,13 +265,13 @@ fn extract_islem(remaining: &mut String) -> String {
     static CIFT_KELIME_RE: OnceLock<Regex> = OnceLock::new();
     
     let ic_re = IC_BRD_RE.get_or_init(||
-        Regex::new(r"(?i)(?:[iıİI][çcÇC]|[iıİI]nc[eE])\s*[-:.]?\s*(?:b[oöOÖ]rd[üuÜU]r(?:l[üuÜU])?|bodrur|brd)?\s*(\d+)").unwrap()
+        Regex::new(r"(?i)(?:^|\s)(?:[iıİI][çcÇC]|[iıİI]nc[eE])\s*[-:.]?\s*(?:b[oöOÖ]rd[üuÜU]r(?:l[üuÜU])?|bodrur|brd)?\s*(\d+)").unwrap()
     );
     let dis_re = DIS_BRD_RE.get_or_init(||
-        Regex::new(r"(?i)(?:d[iıİI][şsŞS]|k[aA]l[ıiIİ]n)\s*[-:.]?\s*(?:b[oöOÖ]rd[üuÜU]r(?:l[üuÜU])?|bodrur|brd)?\s*(\d+)").unwrap()
+        Regex::new(r"(?i)(?:^|\s)(?:d[iıİI][şsŞS]|k[aA]l[ıiIİ]n)\s*[-:.]?\s*(?:b[oöOÖ]rd[üuÜU]r(?:l[üuÜU])?|bodrur|brd)?\s*(\d+)").unwrap()
     );
     let cift_kelime = CIFT_KELIME_RE.get_or_init(|| 
-        Regex::new(r"(?i)[çcÇC][iıİI]ft\s+(?:b[oöOÖ]rd[üuÜU]r(?:l[üuÜUiıİI])?|bodrur|brd)").unwrap()
+        Regex::new(r"(?i)(?:^|\s)[çcÇC][iıİI]ft\s+(?:b[oöOÖ]rd[üuÜU]r(?:l[üuÜUiıİI])?|bodrur|brd)").unwrap()
     );
 
     let ic_cap = ic_re.captures(&clone);
@@ -498,14 +498,65 @@ fn format_metrekare(bekleyen: &str) -> String {
     String::new()
 }
 
-pub fn truncate_cari(cari: &str, max_words: usize) -> String {
-    let cleaned_cari = cari.replace('.', " ");
-    if max_words == 0 {
-        return cleaned_cari.trim().to_string();
+static CARI_REPLACEMENTS: OnceLock<Vec<(Regex, &'static str)>> = OnceLock::new();
+
+pub fn abbreviate_cari(cari: &str) -> String {
+    let replacements = CARI_REPLACEMENTS.get_or_init(|| {
+        vec![
+            (Regex::new(r"(?i)DUBA[İI]\s+HALIBANK\s+HALI\s+MOB(?:\.|İLYA)?\s+EV\s+TEKST[İI]L\s+Z[ÜU]CCAC[İI]YE\s+HED[İI]YEL[İI]K\s+E[ŞS]YA\s+OTOMOT[İI]V\s+[İI]N[ŞS]\.?\s+TAAH\.?\s+GIDA\s+NALBUR[İI]YE\s+SAN\.?\s+VE\s+T[İI]C\.?\s+LTD\.?\s+[ŞS]T[İI]\.?").unwrap(), "DUBAİ HALIBANK HALI MOB."),
+            (Regex::new(r"(?i)\bDAYANIKLI\b").unwrap(), "DAY."),
+            (Regex::new(r"(?i)\bT[ÜU]KET[İI]M\b").unwrap(), "TÜK."),
+            (Regex::new(r"(?i)\bMALLARI\b").unwrap(), "MALL."),
+            (Regex::new(r"(?i)\bMEFRU[ŞS]AT\b").unwrap(), "MEF."),
+            (Regex::new(r"(?i)\bTA[ŞS]IMACILIK\b").unwrap(), "TAŞ."),
+            (Regex::new(r"(?i)\b[İI]N[ŞS]AAT\b").unwrap(), "İNŞ."),
+            (Regex::new(r"(?i)\bTAAHH[ÜU]T\b").unwrap(), "TAAH."),
+            (Regex::new(r"(?i)\bSANAY[İI]\b").unwrap(), "SAN."),
+            (Regex::new(r"(?i)\bT[İI]CARET\b").unwrap(), "TİC."),
+            (Regex::new(r"(?i)\bL[İI]M[İI]TED\b").unwrap(), "LTD."),
+            (Regex::new(r"(?i)\bANON[İI]M\s+[ŞS][İI]RKET[İI]\b").unwrap(), "A.Ş."),
+            (Regex::new(r"(?i)\b[ŞS][İI]RKET[İI]\b").unwrap(), "ŞTİ."),
+            (Regex::new(r"(?i)\bDANI[ŞS]MANLIK\b").unwrap(), "DANIŞM."),
+            (Regex::new(r"(?i)\bORGAN[İI]ZASYON\b").unwrap(), "ORG."),
+            (Regex::new(r"(?i)\bPAZARLAMA\b").unwrap(), "PAZ."),
+            (Regex::new(r"(?i)\bORTAKLI[ĞG]I\b").unwrap(), "ORT."),
+            (Regex::new(r"(?i)\bMOB[İI]LYA\b").unwrap(), "MOB."),
+            (Regex::new(r"(?i)\bZEM[İI]N\s+KAPLAMALARI\b").unwrap(), "ZEM. KAPL."),
+            (Regex::new(r"(?i)\bENRULO\s+N\b").unwrap(), "EN"),
+            (Regex::new(r"(?i)\bENRULO\b").unwrap(), "EN"),
+            (Regex::new(r"(?i)\b[İI]THALAT\b").unwrap(), "İTH."),
+            (Regex::new(r"(?i)\b[İI]HRACAT\b").unwrap(), "İHR."),
+            (Regex::new(r"(?i)\bH[İI]ZMETLER[İI]\b").unwrap(), "HİZ."),
+            (Regex::new(r"(?i)\bTEKST[İI]L\b").unwrap(), "TEKS."),
+            (Regex::new(r"(?i)\bTUR[İI]ZM\b").unwrap(), "TUR."),
+            (Regex::new(r"(?i)\bOTOMOT[İI]V\b").unwrap(), "OTO."),
+            (Regex::new(r"(?i)\bLOJ[İI]ST[İI]K\b").unwrap(), "LOJ."),
+            (Regex::new(r"(?i)\bM[ÜU]HEND[İI]SL[İI]K\b").unwrap(), "MÜH."),
+            (Regex::new(r"(?i)\b[ÜU]R[ÜU]NLER[İI]\b").unwrap(), "ÜRÜN."),
+            (Regex::new(r"(?i)\bGERE[ÇC]LER[İI]\b").unwrap(), "GER."),
+        ]
+    });
+
+    let spaced_cari = cari.replace('.', ". ");
+    let mut s = spaced_cari;
+    for (re, repl) in replacements {
+        s = re.replace_all(&s, *repl).to_string();
     }
-    let words: Vec<&str> = cleaned_cari.split_whitespace().collect();
+    
+    static SPACE_RE: OnceLock<Regex> = OnceLock::new();
+    let space_re = SPACE_RE.get_or_init(|| Regex::new(r"\s+").unwrap());
+    
+    space_re.replace_all(&s, " ").trim().to_string()
+}
+
+pub fn truncate_cari(cari: &str, max_words: usize) -> String {
+    let abbr = abbreviate_cari(cari);
+    if max_words == 0 {
+        return abbr;
+    }
+    let words: Vec<&str> = abbr.split_whitespace().collect();
     if words.len() <= max_words {
-        cleaned_cari.trim().to_string()
+        abbr
     } else {
         words[..max_words].join(" ")
     }

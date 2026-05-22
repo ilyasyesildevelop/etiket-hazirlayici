@@ -1083,3 +1083,20 @@ input[type="checkbox"] {
   background: rgba(0,0,0,0.05);
   color: var(--text-primary);
 }
+
+td.col-actions {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 2px 4px !important;
+  white-space: nowrap;
+}
+td.col-actions .btn-icon {
+  padding: 2px;
+  min-width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

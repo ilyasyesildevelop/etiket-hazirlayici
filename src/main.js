@@ -9,7 +9,7 @@ const APP_INFO = {
 
 const S = {
   rows: [], labels: [], sel: new Set(), curIdx: 0, page: 0, pageSize: 50, zoom: 80, search: '', headerFontSize: 6,
-  settings: null,
+  settings: null, editingRowIdx: null, deletedIndices: new Set()
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 function initUI() {
   $('btnOpenFile').onclick = openFile;
   $('btnLoad').onclick = loadSheet;
+  if ($('btnClearList')) $('btnClearList').onclick = clearList;
   $('selectAll').onchange = e => { const f = getFiltered(); f.forEach(r => e.target.checked ? S.sel.add(r.idx) : S.sel.delete(r.idx)); renderTable(); };
   $('searchInput').oninput = e => { S.search = e.target.value; S.page = 0; renderTable(); };
   $('btnPrevPage').onclick = () => { S.page--; renderTable(); };
@@ -236,12 +237,41 @@ async function loadSheet() {
     S.rows = data.rows; 
     S.manualRows = []; 
     S.sel = new Set(data.rows.map((_, i) => i)); 
+    S.deletedIndices = new Set();
     S.page = 0;
     await reparse();
     renderTable(); S.curIdx = 0; renderPreview();
     setStatus('success', `${data.total} kayıt yüklendi.`);
     $('statusRowCount').textContent = `Kayıt: ${data.total}`;
+    
+    // Excel verilerinden eşsiz cari ve malzeme isimlerini Firebase'e gönder
+    if (typeof fbSaveCari === 'function') {
+      const uCari = new Set(S.rows.map(r => (r.cari_unvan||'').trim()).filter(Boolean));
+      const uMalz = new Set(S.rows.map(r => (r.malz_aciklama||'').trim()).filter(Boolean));
+      uCari.forEach(c => fbSaveCari(c));
+      uMalz.forEach(m => fbSaveMalz(m));
+    }
   } catch (e) { setStatus('error', '' + e); }
+}
+
+async function clearList() {
+  if (!confirm("Tüm listeyi temizlemek istediğinize emin misiniz?")) return;
+  try { await invoke('clear_all_data'); } catch(e) { console.error("Backend temizlenemedi", e); }
+  S.rows = [];
+  S.manualRows = [];
+  S.labels = [];
+  S.sel = new Set();
+  S.deletedIndices = new Set();
+  S.curIdx = 0;
+  S.page = 0;
+  S.search = '';
+  if ($('searchInput')) $('searchInput').value = '';
+  if ($('filePath')) $('filePath').value = '';
+  if ($('sheetSelect')) $('sheetSelect').innerHTML = '<option value="">Sayfa seçin</option>';
+  renderTable();
+  renderPreview();
+  setStatus('info', 'Liste temizlendi.');
+  $('statusRowCount').textContent = `Kayıt: 0`;
 }
 
 function getRules() {
@@ -257,15 +287,42 @@ async function reparse() {
 // Manuel kayıtları frontend state'inde tutuyoruz (önizleme/tablo için)
 S.manualRows = S.manualRows || [];
 
+function openModalWithData(idx, isEdit) {
+  const L = S.labels[idx];
+  if (!L) return;
+  $('mCari').value = L.cari_unvan || '';
+  $('mMalz').value = L.malz_aciklama || '';
+  $('mEbat').value = L.ebat || '';
+  $('mIslem').value = L.islem || '';
+  $('mMetrekare').value = L.metrekare || '';
+  $('mAdet').value = L.print_count || 1;
+  $('mMusteri').value = L.musteri_adi || '';
+  $('mDiger').value = L.diger_aciklamalar || '';
+  
+  S.editingRowIdx = isEdit ? idx : null;
+  $('manualModal').classList.remove('hidden');
+}
+
+function editRow(idx) { openModalWithData(idx, true); }
+function copyRow(idx) { openModalWithData(idx, false); }
+async function deleteRow(idx) {
+  if (!confirm("Bu satırı silmek istediğinize emin misiniz?")) return;
+  S.deletedIndices.add(idx);
+  S.sel.delete(idx);
+  renderTable();
+  renderPreview();
+  updSel();
+}
+
 async function saveManualLabel() {
-  const cari   = ($('mCari').value   || '').trim();
-  const malz   = ($('mMalz').value   || '').trim();
-  const ebat   = ($('mEbat').value   || '').trim();
-  const islem  = ($('mIslem').value  || '').trim();
-  const miktar = ($('mMiktar').value || '').trim();
-  const kopya  = Math.max(1, parseInt($('mKopya').value) || 1);
-  const musteri= ($('mMusteri').value|| '').trim();
-  const diger  = ($('mDiger').value  || '').trim();
+  const cari   = ($('mCari').value      || '').trim();
+  const malz   = ($('mMalz').value      || '').trim();
+  const ebat   = ($('mEbat').value      || '').trim();
+  const islem  = ($('mIslem').value     || '').trim();
+  const miktar = ($('mMetrekare').value || '').trim();
+  const kopya  = Math.max(1, parseInt($('mAdet').value) || 1);
+  const musteri= ($('mMusteri').value   || '').trim();
+  const diger  = ($('mDiger').value     || '').trim();
 
   const isMetre = miktar.toLowerCase().includes('m²') || miktar.toLowerCase().includes('m2');
 
@@ -284,7 +341,15 @@ async function saveManualLabel() {
 
   try {
     await invoke('add_manual_label', { label });
-    // Arka planda kaydettik; şimdi frontend listesini de güncelle
+
+    // Düzenleme moduysa eskiyi gizle
+    if (S.editingRowIdx !== null) {
+      S.deletedIndices.add(S.editingRowIdx);
+      S.sel.delete(S.editingRowIdx);
+      S.editingRowIdx = null;
+    }
+
+    // Frontend listesini güncelle
     const manualIdx = S.rows.length + S.manualRows.length;
     S.manualRows.push({
       cari_unvan:       cari,
@@ -295,23 +360,28 @@ async function saveManualLabel() {
       idx:              manualIdx,
     });
     S.sel.add(manualIdx);
-    // Etiket listesini de yenile
+
+    // Backend'den temiz label listesini çek
     S.labels = await invoke('parse_all_labels', { rules: S.settings.satir_rules, cariMaxWords: S.settings.cari_max_words });
     renderTable();
     renderPreview();
     updSel();
+
     // Formu temizle ve kapat
-    ['mCari','mMalz','mEbat','mIslem','mMiktar','mMusteri','mDiger'].forEach(id => { $(id).value = ''; });
-    $('mKopya').value = '1';
+    ['mCari','mMalz','mEbat','mIslem','mMetrekare','mMusteri','mDiger'].forEach(id => { $(id).value = ''; });
+    $('mAdet').value = '1';
     $('manualModal').classList.add('hidden');
     setStatus('success', `Manuel etiket eklendi: ${cari || malz || '(isimsiz)'}`);
+    if (cari) fbSaveCari(cari);
+    if (malz) fbSaveMalz(malz);
+    if (islem && typeof fbSaveIslem === 'function') fbSaveIslem(islem);
   } catch(e) { setStatus('error', '' + e); }
 }
 
 function getFiltered() {
   const baseRows = S.rows.map((r, i) => ({ ...r, idx: i }));
   const manualRows = (S.manualRows || []).map(r => ({ ...r }));
-  const allRows = [...baseRows, ...manualRows];
+  const allRows = [...baseRows, ...manualRows].filter(r => !S.deletedIndices.has(r.idx));
   if (!S.search) return allRows;
   const t = S.search.toLowerCase();
   return allRows.filter(r => (r.cari_unvan + r.malz_aciklama + r.satir_aciklama).toLowerCase().includes(t));
@@ -323,7 +393,7 @@ function renderTable() {
   S.page = Math.min(S.page, tp - 1);
   const start = S.page * S.pageSize, pg = f.slice(start, start + S.pageSize);
   const tb = $('tableBody');
-  if (!pg.length) { tb.innerHTML = '<tr class="empty-row"><td colspan="6"><div class="empty-state"><span class="material-icons-round">search_off</span><p>Kayıt yok</p></div></td></tr>'; }
+  if (!pg.length) { tb.innerHTML = '<tr class="empty-row"><td colspan="7"><div class="empty-state"><span class="material-icons-round">search_off</span><p>Kayıt yok</p></div></td></tr>'; }
   else {
     tb.innerHTML = pg.map(r => {
       const numBadge = r.isManual ? `<span style="background:var(--secondary);color:white;padding:2px 4px;border-radius:4px;font-size:10px;">Elle</span>` : `${r.idx+1}`;
@@ -332,12 +402,16 @@ function renderTable() {
       <td class="col-num">${numBadge}</td><td class="col-cari" title="${esc(r.cari_unvan)}">${esc(r.cari_unvan)}</td>
       <td class="col-malz" title="${esc(r.malz_aciklama)}">${esc(r.malz_aciklama)}</td>
       <td class="col-satir" title="${esc(r.satir_aciklama)}">${esc(r.satir_aciklama)}</td>
-      <td class="col-bekleyen">${esc(r.bekleyen_siparis)}</td></tr>`;
+      <td class="col-bekleyen">${esc(r.bekleyen_siparis)}</td>
+      <td class="col-actions">
+        <button class="btn-icon" onclick="event.stopPropagation();editRow(${r.idx})" title="Düzenle"><span class="material-icons-round" style="font-size:16px;">edit</span></button><button class="btn-icon" onclick="event.stopPropagation();copyRow(${r.idx})" title="Kopyala"><span class="material-icons-round" style="font-size:16px;">content_copy</span></button><button class="btn-icon" onclick="event.stopPropagation();deleteRow(${r.idx})" style="color:#d32f2f;" title="Sil"><span class="material-icons-round" style="font-size:16px;">delete</span></button>
+      </td>
+      </tr>`;
     }).join('');
     tb.querySelectorAll('tr[data-idx]').forEach(tr => {
       const idx = +tr.dataset.idx;
       tr.querySelector('input').onchange = e => { e.target.checked ? S.sel.add(idx) : S.sel.delete(idx); tr.classList.toggle('selected', e.target.checked); updSel(); };
-      tr.onclick = e => { if (e.target.type === 'checkbox') return; S.curIdx = idx; renderPreview(); highlightRow(); };
+      tr.onclick = e => { if (e.target.type === 'checkbox' || e.target.closest('.btn-icon')) return; S.curIdx = idx; renderPreview(); highlightRow(); };
     });
   }
   $('btnPrevPage').disabled = S.page === 0; $('btnNextPage').disabled = S.page >= tp - 1;
@@ -357,7 +431,7 @@ function updSel() {
   $('labelNavInfo').textContent = sl.length ? `${Math.min(S.curIdx+1, sl.length)} / ${sl.length}` : '0 / 0';
 }
 
-function getSelLabels() { return S.labels.filter((_, i) => S.sel.has(i)); }
+function getSelLabels() { return S.labels.filter((_, i) => S.sel.has(i) && !S.deletedIndices.has(i)); }
 
 function getPrintLabels() {
   const selRows = getSelLabels();
@@ -675,3 +749,113 @@ async function loadRecentFiles() {
 function $(id) { return document.getElementById(id); }
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML.replace(/\n/g, '<br>'); }
 function setStatus(t, m) { const i = $('statusIcon'); i.className = 'material-icons-round status-icon ' + t; i.textContent = t==='success'?'check_circle':t==='error'?'error':'sync'; $('statusText').textContent = m; }
+
+// ===== FİREBASE =====
+const _fbConfig = {
+  apiKey: "AIzaSyBOHE4GoBfPXA6wYLVzXtr0Oc-uo2pSlMg",
+  authDomain: "etiket-360.firebaseapp.com",
+  projectId: "etiket-360",
+  storageBucket: "etiket-360.firebasestorage.app",
+  messagingSenderId: "602084004823",
+  appId: "1:602084004823:web:fe093762bab8af062ef192",
+  measurementId: "G-SKLNE0V7FL"
+};
+
+let _db = null;
+
+function fbInit() {
+  try {
+    if (typeof firebase === 'undefined') return;
+    if (!firebase.apps.length) firebase.initializeApp(_fbConfig);
+    _db = firebase.firestore();
+    // Offline persistence (IndexedDB cache)
+    _db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+    fbEnsureCollections().then(() => fbLoadSuggestions());
+    console.log('[Firebase] Bağlandı:', _fbConfig.projectId);
+  } catch (e) {
+    console.warn('[Firebase] Başlatılamadı:', e);
+  }
+}
+
+// Koleksiyonlar yoksa sentinel belge ile oluştur
+async function fbEnsureCollections() {
+  if (!_db) return;
+  try {
+    const collections = [
+      { name: 'CariList',    sentinel: { name: '_init', _sentinel: true, createdAt: firebase.firestore.FieldValue.serverTimestamp() } },
+      { name: 'MalzemeList', sentinel: { name: '_init', _sentinel: true, createdAt: firebase.firestore.FieldValue.serverTimestamp() } },
+      { name: 'IslemList',   sentinel: { name: '_init', _sentinel: true, createdAt: firebase.firestore.FieldValue.serverTimestamp() } },
+    ];
+    for (const col of collections) {
+      const ref = _db.collection(col.name).doc('_init');
+      const snap = await ref.get();
+      if (!snap.exists) {
+        await ref.set(col.sentinel);
+        console.log(`[Firebase] '${col.name}' koleksiyonu oluşturuldu.`);
+        
+        // IslemList için statik verileri ekle
+        if (col.name === 'IslemList') {
+          const staticIslemler = [
+            'OVERLOK', 'SAÇAK', 'SPOR SAÇAK', 'KATLAMA', 'OVAL', 'OVAL OVERLOK', 
+            'OVAL SAÇAK', 'BRD', 'BORDÜR', 'KARE', 'KARE OVERLOK', 'KARE SAÇAK'
+          ];
+          for (const islem of staticIslemler) {
+            await fbSaveIslem(islem);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[Firebase] Koleksiyon oluşturma hatası:', e);
+  }
+}
+
+async function fbSaveCari(name) {
+  if (!_db || !name) return;
+  const key = name.trim().toUpperCase();
+  try {
+    await _db.collection('CariList').doc(key).set({ name: key, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  } catch (e) { console.warn('[Firebase] CariList kayıt hatası:', e); }
+}
+
+async function fbSaveMalz(name) {
+  if (!_db || !name) return;
+  const key = name.trim().toUpperCase();
+  try {
+    await _db.collection('MalzemeList').doc(key).set({ name: key, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  } catch (e) { console.warn('[Firebase] MalzemeList kayıt hatası:', e); }
+}
+
+async function fbSaveIslem(name) {
+  if (!_db || !name) return;
+  const key = name.trim().toUpperCase();
+  try {
+    await _db.collection('IslemList').doc(key).set({ name: key, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  } catch (e) { console.warn('[Firebase] IslemList kayıt hatası:', e); }
+}
+
+async function fbLoadSuggestions() {
+  if (!_db) return;
+  try {
+    const cariSnap = await _db.collection('CariList').orderBy('name').get();
+    const cariDL = $('cariDatalist');
+    if (cariDL) cariDL.innerHTML = cariSnap.docs.map(d => `<option value="${d.data().name}"></option>`).join('');
+
+    const malzSnap = await _db.collection('MalzemeList').orderBy('name').get();
+    const malzDL = $('malzDatalist');
+    if (malzDL) malzDL.innerHTML = malzSnap.docs.map(d => `<option value="${d.data().name}"></option>`).join('');
+
+    const islemSnap = await _db.collection('IslemList').orderBy('name').get();
+    const islemDL = $('islemDatalist');
+    if (islemDL) islemDL.innerHTML = islemSnap.docs.map(d => `<option value="${d.data().name}"></option>`).join('');
+
+    console.log(`[Firebase] ${cariSnap.size} cari, ${malzSnap.size} malzeme, ${islemSnap.size} işlem önerisi yüklendi.`);
+  } catch (e) { console.warn('[Firebase] Öneri yükleme hatası:', e); }
+}
+
+// Firebase'i DOM yüklendiğinde başlat
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', fbInit);
+} else {
+  fbInit();
+}

@@ -134,6 +134,37 @@ fn add_manual_label(label: ParsedLabel, state: State<AppState>) {
 }
 
 #[tauri::command]
+fn update_manual_label(index: usize, label: ParsedLabel, state: State<AppState>) {
+    let mut manual = state.manual_labels.lock().unwrap();
+    if index < manual.len() {
+        manual[index] = label;
+    }
+}
+
+#[tauri::command]
+fn remove_manual_label(index: usize, state: State<AppState>) {
+    let mut manual = state.manual_labels.lock().unwrap();
+    if index < manual.len() {
+        manual.remove(index);
+    }
+}
+
+#[tauri::command]
+fn remove_excel_row(index: usize, state: State<AppState>) {
+    let mut rows = state.rows.lock().unwrap();
+    if index < rows.len() {
+        rows.remove(index);
+    }
+}
+
+#[tauri::command]
+fn clear_all_data(state: State<AppState>) {
+    state.rows.lock().unwrap().clear();
+    state.manual_labels.lock().unwrap().clear();
+    *state.current_file.lock().unwrap() = String::new();
+}
+
+#[tauri::command]
 fn save_label_settings(settings_data: LabelSettings, name: String) -> Result<(), String> {
     settings::save_settings(&settings_data, &name)
 }
@@ -410,6 +441,10 @@ pub fn run() {
             parse_satir,
             parse_all_labels,
             add_manual_label,
+            update_manual_label,
+            remove_manual_label,
+            remove_excel_row,
+            clear_all_data,
             save_label_settings,
             load_label_settings,
             save_settings_to_file,
