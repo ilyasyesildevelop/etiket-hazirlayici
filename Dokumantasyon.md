@@ -7,8 +7,8 @@ Etiket Hazırlayıcı; halı üretimi, satışı veya lojistiği yapan firmalar�
 Modern ve kullanıcı dostu bir arayüze sahip olan uygulama şu temel bölümlerden oluşur:
 
 * **Üst Kontrol Çubuğu:** Kurumsal mavi tonda tasarlanmış bu alanda uygulama versiyonu, Excel dosya yükleme butonu ("Dosya Aç"), Excel içindeki çalışma sayfaları ("Sheet") arasında geçiş yapmayı sağlayan seçici, "Yükle" butonu ve geçmiş dosyalara hızlı erişim için "Son Yüklenenler" bölümü bulunur.
-* **Sol Panel (Veri Listesi):** Yüklenen Excel dosyasındaki verilerin satır satır listelendiği ana tablodur. Satırlar seçilebilir, sayfalama (pagination) özelliği ile sayfalar arası geçiş yapılabilir ve arama kutusu ile binlerce satır içinde hızlıca istenen veriye ulaşılabilir.
-* **Sağ Panel (Canlı Önizleme):** Seçili olan etiketin, o anki boyut, font ve alan genişliği ayarlarına göre yazıcıdan tam olarak nasıl çıkacağını gösteren gerçek zamanlı, interaktif bir önizleme alanıdır. Altındaki kontroller ile yakınlaştırma/uzaklaştırma yapılabilir ve seçilen etiketler arasında gezilebilir.
+* **Sol Panel (Veri Listesi):** Yüklenen Excel dosyasındaki verilerin satır satır listelendiği ana tablodur. Satırlar seçilebilir, sayfalama (pagination) özelliği ile sayfalar arası geçiş yapılabilir ve arama kutusu ile binlerce satır içinde hızlıca istenen veriye ulaşılabilir. Ayrıca her satırın sağ tarafında bulunan işlemler ("İşlem") menüsü ile satırları manuel düzenleme, kopyalama (çoğaltma) ve silme imkânı sunar.
+* **Sağ Panel (Canlı Önizleme):** Seçili olan etiketin, o anki boyut, font ve alan genişliği ayarlarına göre yazıcıdan tam olarak nasıl çıkacağını gösteren gerçek zamanlı, interaktif bir önizleme alanıdır. Altındaki kontroller ile yakınlaştırma/uzaklaştırma yapılabilir ve seçilen etiketler arasında gezilebilir. Mavi renkli rehber çizgilerle tasarım alanını net bir şekilde gösterir.
 * **Alt Panel (Ayarlar Alanı):** 3 ana sekmeden ("Etiket Ayarları", "Alan Genişlikleri", "Genel Ayarlar") oluşur. Etiket boyutları, font, başlık metni, kenar boşlukları ve yazıcı seçimi bu alandan yapılır.
 * **Sağ Alt İşlem Butonları:** Sistemin ana fonksiyonlarını tetikleyen butonlardır: PDF Oluştur, Yazdır, Ayarları Kaydet, Ayarları Yükle, Varsayılanlara Dön ve Hakkında.
 * **Durum Çubuğu (Footer):** En altta yer alan bu bantta uygulamanın çalışma durumu (Hazır, Yükleniyor vs.), seçili etiket boyutu, toplam kayıt sayısı ve sağ köşede geliştirici telif bilgisi yer alır.
@@ -20,15 +20,17 @@ Modern ve kullanıcı dostu bir arayüze sahip olan uygulama şu temel bölümle
 * **PDF Dışa Aktarma:** Seçilen etiketleri belirtilen ayarlarla çok sayfalı PDF'e dönüştürür.
 * **Otomatik Veri Ayrıştırma:** Uzun ve düzensiz açıklama metinlerinin içinden ebat, adet, müşteri ismi, işlem tipi gibi verileri çekip çıkararak alanlara böler.
 * **Kalıcı Ayarlar:** Yapılan tüm etiket tasarımı ayarlarının kalıcı olarak kaydedilebilmesini ve uygulamanın her açılışında geri yüklenmesini sağlar.
+* **Bulut Tabanlı Öneri Sistemi (Firebase):** Sisteme yüklenen veya manuel eklenen Cari, Malzeme ve İşlem verileri Firebase bulut veritabanına otomatik kaydedilir. Yeni manuel etiket oluşturulurken akıllı otomatik tamamlama (yazdıkça daralan listeler) ile hız kazandırır.
+* **Manuel Kayıt Yönetimi:** Eksik veya hatalı gelen veriler için özel manuel etiket eklenebilir veya listedeki mevcut Excel satırları modal penceresi üzerinden doğrudan düzenlenebilir. Kopyala butonuyla benzer bir etiketi saniyeler içinde çoğaltabilirsiniz.
 
 ## 4. Teknik Detaylar (Alanların Tespit Edilmesi)
 Uygulamanın arka planında (Rust dilinde yazılmış) gelişmiş bir Ayrıştırıcı (Parser) motoru çalışır. Bu motor, metinlerdeki kelimeleri ve kalıpları (Regex) analiz eder:
 
 * **EBAT:** Metin içindeki `120*200`, `80x150` gibi kalıpları bulur. "ENRULO" ibaresi geçen ürünlerde ebat bilgisi `Satır Açıklaması` sütunundan, diğer standart ürünlerde ise `Malz. Açıklama` sütunundan öncelikli olarak çekilir.
 * **ADET / m²:** Metin içindeki "X ADET" bilgisini çıkarır. ENRULO tipi ürünlerde `Bekleyen Sipariş` sütunundaki değer m² olarak algılanırken, normal ürünlerdeki değer doğrudan kopya sayısı (Adet) olarak algılanır.
-* **İŞLEM:** Satır açıklamasındaki metni tarar. OVERLOK, SAÇAK, KATLAMA vb. kelimeleri standartlaştırır. Müşterilerin karmaşık şekilde yazdığı "İç bordür 50000 / Dış bordür 42451" ya da "Kalın/İnce" gibi Çift Bordür işlemlerini algılayıp `ÇİFT BRD` alt satırına `İÇ 50000 - DIŞ 42451` şeklinde muntazam bir şekilde formatlar. Ayrıca "BODRUR" gibi yazım yanlışlarını tolere eder.
+* **İŞLEM:** Satır açıklamasındaki metni tarar. OVERLOK, SAÇAK, KATLAMA vb. kelimeleri standartlaştırır. Müşterilerin karmaşık şekilde yazdığı "İç bordür 50000 / Dış bordür 42451" ya da "Kalın/İnce" gibi Çift Bordür işlemlerini algılayıp `ÇİFT BRD` alt satırına `İÇ 50000 - DIŞ 42451` şeklinde formatlar. "dalgıç" gibi kelimelerin içindeki heceleri hatalı algılamaması için sıkı kelime sınırı kuralları uygular.
 * **MÜŞTERİ ADI (MŞ):** `Doküman İzleme` ve `Satır Açıklaması` sütunlarını tarar. "MŞ:" gibi bir işaretçi arar. Eğer işaretçi yoksa bile, salt isim ve telefon numarasından oluşan metinleri tespit edip, telefon numaralarını temizleyerek sadece adı ve soyadı kısmını çıkarır (Örn: MŞ: AYŞEGÜL TAŞKIN). Bayi (Cari) ünvanlarının yanlışlıkla son kullanıcı olarak yazılmasını önleyen güvenlik filtresi içerir.
-* **Cari Ünvan:** Çok uzun şirket ünvanlarını etikete sığdırabilmek için ayarlardan girilen "Cari Maks. Kelime" sınırına göre otomatik kırpar.
+* **Cari Ünvan (Kısaltma Motoru):** Çok uzun şirket ünvanlarını (Örn: SANAYİ TİCARET LİMİTED ŞİRKETİ) özel kısaltma motoruyla (SAN. TİC. LTD. ŞTİ.) standart formlara çevirir. ERP sistemlerinden (Logo Tiger vb.) aralarına boşluk konmadan gönderilen hatalı isimleri (S.KUY.MOB.) akıllıca algılayıp ayırır. Son olarak "Cari Maks. Kelime" sınırına göre metni kırparak etikete sığdırır.
 * **Diğer Açıklamalar:** Ebat, adet, işlem, müşteri adı, telefon numarası gibi bilgiler metinlerden ayıklandıktan sonra geriye kalan saf metni bu alana taşır. Uzun metinlerde otomatik olarak font küçültme (auto-fit) uygular.
 
 ## 5. Etiket Özellikleri (Varsayılanlar)
