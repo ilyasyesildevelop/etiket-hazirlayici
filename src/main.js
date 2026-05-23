@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 function initUI() {
   $('btnOpenFile').onclick = openFile;
   $('btnLoad').onclick = loadSheet;
+  if ($('sheetSelect')) $('sheetSelect').onchange = loadSheet;
   if ($('btnClearList')) $('btnClearList').onclick = clearList;
   $('selectAll').onchange = e => { const f = getFiltered(); f.forEach(r => e.target.checked ? S.sel.add(r.idx) : S.sel.delete(r.idx)); renderTable(); };
   $('searchInput').oninput = e => { S.search = e.target.value; S.page = 0; renderTable(); };
