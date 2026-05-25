@@ -9,8 +9,26 @@ const APP_INFO = {
 
 const S = {
   rows: [], labels: [], sel: new Set(), curIdx: 0, page: 0, pageSize: 50, zoom: 80, search: '', headerFontSize: 6,
-  settings: null, editingRowIdx: null, deletedIndices: new Set()
+  settings: null, editingRowIdx: null, deletedIndices: new Set(), sortCol: null, sortAsc: true
 };
+
+window.sortRows = function(col) {
+  if (S.sortCol === col) S.sortAsc = !S.sortAsc;
+  else { S.sortCol = col; S.sortAsc = true; }
+  S.page = 0;
+  renderTable();
+  updateSortUI();
+};
+
+function updateSortUI() {
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    th.style.color = '';
+    if (th.dataset.sort === S.sortCol) {
+      th.style.color = 'var(--primary)';
+    }
+  });
+}
+
 
 document.addEventListener('DOMContentLoaded', async () => {
   S.settings = await invoke('get_default_settings');
@@ -382,10 +400,27 @@ async function saveManualLabel() {
 function getFiltered() {
   const baseRows = S.rows.map((r, i) => ({ ...r, idx: i }));
   const manualRows = (S.manualRows || []).map(r => ({ ...r }));
-  const allRows = [...baseRows, ...manualRows].filter(r => !S.deletedIndices.has(r.idx));
-  if (!S.search) return allRows;
-  const t = S.search.toLowerCase();
-  return allRows.filter(r => (r.cari_unvan + r.malz_aciklama + r.satir_aciklama).toLowerCase().includes(t));
+  let allRows = [...baseRows, ...manualRows].filter(r => !S.deletedIndices.has(r.idx));
+  if (S.search) {
+    const t = S.search.toLowerCase();
+    allRows = allRows.filter(r => (r.cari_unvan + r.malz_aciklama + r.satir_aciklama + (S.labels[r.idx]?.musteri_adi || '')).toLowerCase().includes(t));
+  }
+  if (S.sortCol) {
+    allRows.sort((a, b) => {
+      let va = '', vb = '';
+      const la = S.labels[a.idx] || {}; const lb = S.labels[b.idx] || {};
+      if (S.sortCol === 'cari') { va = a.cari_unvan || ''; vb = b.cari_unvan || ''; }
+      else if (S.sortCol === 'malz') { va = a.malz_aciklama || ''; vb = b.malz_aciklama || ''; }
+      else if (S.sortCol === 'satir') { va = a.satir_aciklama || ''; vb = b.satir_aciklama || ''; }
+      else if (S.sortCol === 'musteri') { va = la.musteri_adi || ''; vb = lb.musteri_adi || ''; }
+      else if (S.sortCol === 'bekleyen') {
+        const na = parseFloat(a.bekleyen_siparis)||0, nb = parseFloat(b.bekleyen_siparis)||0;
+        if(na!==nb) return S.sortAsc ? na-nb : nb-na;
+      }
+      return S.sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+  }
+  return allRows;
 }
 
 
@@ -394,7 +429,7 @@ function renderTable() {
   S.page = Math.min(S.page, tp - 1);
   const start = S.page * S.pageSize, pg = f.slice(start, start + S.pageSize);
   const tb = $('tableBody');
-  if (!pg.length) { tb.innerHTML = '<tr class="empty-row"><td colspan="7"><div class="empty-state"><span class="material-icons-round">search_off</span><p>Kayıt yok</p></div></td></tr>'; }
+  if (!pg.length) { tb.innerHTML = '<tr class="empty-row"><td colspan="8"><div class="empty-state"><span class="material-icons-round">search_off</span><p>Kayıt yok</p></div></td></tr>'; }
   else {
     tb.innerHTML = pg.map(r => {
       const numBadge = r.isManual ? `<span style="background:var(--secondary);color:white;padding:2px 4px;border-radius:4px;font-size:10px;">Elle</span>` : `${r.idx+1}`;
@@ -403,6 +438,7 @@ function renderTable() {
       <td class="col-num">${numBadge}</td><td class="col-cari" title="${esc(r.cari_unvan)}">${esc(r.cari_unvan)}</td>
       <td class="col-malz" title="${esc(r.malz_aciklama)}">${esc(r.malz_aciklama)}</td>
       <td class="col-satir" title="${esc(r.satir_aciklama)}">${esc(r.satir_aciklama)}</td>
+      <td class="col-musteri" title="${esc(S.labels[r.idx]?.musteri_adi||'')}">${esc(S.labels[r.idx]?.musteri_adi||'')}</td>
       <td class="col-bekleyen">${esc(r.bekleyen_siparis)}</td>
       <td class="col-actions">
         <button class="btn-icon" onclick="event.stopPropagation();editRow(${r.idx})" title="Düzenle"><span class="material-icons-round" style="font-size:16px;">edit</span></button><button class="btn-icon" onclick="event.stopPropagation();copyRow(${r.idx})" title="Kopyala"><span class="material-icons-round" style="font-size:16px;">content_copy</span></button><button class="btn-icon" onclick="event.stopPropagation();deleteRow(${r.idx})" style="color:#d32f2f;" title="Sil"><span class="material-icons-round" style="font-size:16px;">delete</span></button>

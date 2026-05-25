@@ -63,14 +63,15 @@
           <thead><tr>
             <th class="col-check"><input type="checkbox" id="selectAll" /></th>
             <th class="col-num">#</th>
-            <th class="col-cari" style="width:120px">CARİ ÜNVAN<div class="resize-handle"></div></th>
-            <th class="col-malz" style="width:200px">MALZ. AÇIKLAMA<div class="resize-handle"></div></th>
-            <th class="col-satir">SATIR AÇIKLAMA<div class="resize-handle"></div></th>
-            <th class="col-bekleyen" style="padding-right:8px">BEK. SİPARİŞ</th>
+            <th class="col-cari" data-sort="cari" onclick="sortRows('cari')" style="width:120px; cursor:pointer;" title="Sıralamak için tıklayın">CARİ ÜNVAN<div class="resize-handle"></div></th>
+            <th class="col-malz" data-sort="malz" onclick="sortRows('malz')" style="width:180px; cursor:pointer;" title="Sıralamak için tıklayın">MALZ. AÇIKLAMA<div class="resize-handle"></div></th>
+            <th class="col-satir" data-sort="satir" onclick="sortRows('satir')" style="cursor:pointer;" title="Sıralamak için tıklayın">SATIR AÇIKLAMA<div class="resize-handle"></div></th>
+            <th class="col-musteri" data-sort="musteri" onclick="sortRows('musteri')" style="width:110px; cursor:pointer;" title="Sıralamak için tıklayın">MÜŞTERİ ADI<div class="resize-handle"></div></th>
+            <th class="col-bekleyen" data-sort="bekleyen" onclick="sortRows('bekleyen')" style="padding-right:8px; cursor:pointer; width:80px" title="Sıralamak için tıklayın">BEK. SİPARİŞ</th>
             <th class="col-actions" style="width:75px; text-align:center;">İŞLEM</th>
           </tr></thead>
           <tbody id="tableBody">
-            <tr class="empty-row"><td colspan="7"><div class="empty-state">
+            <tr class="empty-row"><td colspan="8"><div class="empty-state">
               <span class="material-icons-round">upload_file</span><p>Excel dosyası yükleyin</p>
             </div></td></tr>
           </tbody>
