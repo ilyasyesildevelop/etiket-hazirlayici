@@ -106,7 +106,7 @@ impl Default for LabelSettings {
             },
             field_font_sizes: FieldFontSizes {
                 cari_unvan: 25.0,
-                malz_aciklama: 30.0,
+                malz_aciklama: 25.0,
                 ebat: 35.0,
                 adet_metrekare: 18.0,
                 islem: 18.0,
@@ -118,7 +118,7 @@ impl Default for LabelSettings {
             alignment: "center".into(),
             satir_rules: SatirRules::default(),
             printer_name: String::new(),
-            header_text: "İyi günlerde kullanmanız dileğiyle".into(),
+            header_text: "".into(),
             cari_max_words: 4,
             copies: 1,
             show_date: true,
