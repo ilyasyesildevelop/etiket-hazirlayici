@@ -73,17 +73,17 @@ fn find_columns(range: &calamine::Range<Data>) -> Result<(usize, ColumnMapping),
         for (col_idx, cell) in row.iter().enumerate() {
             let val = normalize_header(&cell.to_string());
 
-            if val.contains("CARI") {
+            if val.contains("CARI") || val.contains("FIRMA") {
                 mapping.cari_unvan_col = Some(col_idx);
             } else if val.contains("MALZ") || val.contains("URUN") {
                 mapping.malz_aciklama_col = Some(col_idx);
-            } else if val.contains("SATIR") || val.contains("ACIKLAMA") {
+            } else if val.contains("SATIR") || val.contains("ACIKLAMA") || val.contains("ACK") {
                 mapping.satir_aciklama_col = Some(col_idx);
-            } else if val.contains("BEKLE") || val.contains("SIPARIS") || val == "SIP" {
+            } else if val.contains("SIPARIS") || val == "SIP" {
                 mapping.bekleyen_siparis_col = Some(col_idx);
-            } else if val.contains("DOKUMAN") || val == "MS" || val.contains("MUSTERI") {
+            } else if val.contains("MUSTERI") || val == "MS" {
                 mapping.dokumanizleme_no_col = Some(col_idx);
-            } else if val.contains("SEVKIYAT") {
+            } else if val.contains("SEVK") || val.contains("ADRES") || val.contains("SUBE") {
                 mapping.sevkiyat_adi_col = Some(col_idx);
             }
         }
@@ -103,7 +103,7 @@ fn find_columns(range: &calamine::Range<Data>) -> Result<(usize, ColumnMapping),
         }
     }
 
-    Err("Gerekli sütunlar bulunamadı. Lütfen sütun isimlerini kontrol edin (Örn: CARİ, ÜRÜN, AÇIKLAMA, SİPARİŞ).".into())
+    Err("Gerekli sütunlar bulunamadı. Lütfen sütun isimlerini kontrol edin (Örn: CARI/FIRMA, MALZ/URUN, ACIKLAMA/SATIR/ACK, SIPARIS/SIP).".into())
 }
 
 fn normalize_header(s: &str) -> String {

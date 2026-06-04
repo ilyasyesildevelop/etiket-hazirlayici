@@ -54,7 +54,8 @@ pub struct LabelSettings {
     pub copies: u32,
     pub alignment: String,
     pub header_text: String,
-    pub cari_max_words: usize,
+    #[serde(default = "default_cari_max_chars")]
+    pub cari_max_chars: usize,
     pub show_date: bool,
     pub show_page_number: bool,
     pub label_margin: f64,
@@ -90,28 +91,32 @@ pub struct SatirRules {
     pub max_chars: usize,
 }
 
+fn default_cari_max_chars() -> usize {
+    45
+}
+
 impl Default for LabelSettings {
     fn default() -> Self {
         Self {
             width_mm: 80.0,
             height_mm: 50.0,
             field_widths: FieldWidths {
-                cari_unvan: 22.0,
-                malz_aciklama: 25.0,
-                ebat: 11.0,
-                adet_metrekare: 8.0,
+                cari_unvan: 20.0,
+                malz_aciklama: 35.0,
+                ebat: 10.0,
+                adet_metrekare: 6.0,
                 islem: 10.0,
-                musteri_adi: 12.0,
-                diger_aciklamalar: 25.0,
+                musteri_adi: 18.0,
+                diger_aciklamalar: 20.0,
             },
             field_font_sizes: FieldFontSizes {
                 cari_unvan: 25.0,
-                malz_aciklama: 25.0,
-                ebat: 35.0,
-                adet_metrekare: 18.0,
-                islem: 18.0,
+                malz_aciklama: 32.0,
+                ebat: 30.0,
+                adet_metrekare: 16.0,
+                islem: 24.0,
                 musteri_adi: 25.0,
-                diger_aciklamalar: 25.0,
+                diger_aciklamalar: 22.0,
             },
             global_font_family: "Tahoma".into(),
             global_color: "#000000".into(),
@@ -119,7 +124,7 @@ impl Default for LabelSettings {
             satir_rules: SatirRules::default(),
             printer_name: String::new(),
             header_text: "".into(),
-            cari_max_words: 4,
+            cari_max_chars: 45,
             copies: 1,
             show_date: true,
             show_page_number: true,
@@ -132,13 +137,13 @@ impl Default for LabelSettings {
 impl Default for FieldWidths {
     fn default() -> Self {
         Self {
-            cari_unvan: 18.0,
-            malz_aciklama: 25.0,
-            ebat: 12.0,
-            adet_metrekare: 12.0,
+            cari_unvan: 20.0,
+            malz_aciklama: 35.0,
+            ebat: 10.0,
+            adet_metrekare: 6.0,
             islem: 10.0,
-            musteri_adi: 10.0,
-            diger_aciklamalar: 25.0,
+            musteri_adi: 18.0,
+            diger_aciklamalar: 20.0,
         }
     }
 }
@@ -146,13 +151,13 @@ impl Default for FieldWidths {
 impl Default for FieldFontSizes {
     fn default() -> Self {
         Self {
-            cari_unvan: 30.0,
-            malz_aciklama: 30.0,
-            ebat: 35.0,
-            adet_metrekare: 25.0,
-            islem: 25.0,
+            cari_unvan: 25.0,
+            malz_aciklama: 32.0,
+            ebat: 30.0,
+            adet_metrekare: 16.0,
+            islem: 24.0,
             musteri_adi: 25.0,
-            diger_aciklamalar: 30.0,
+            diger_aciklamalar: 22.0,
         }
     }
 }
@@ -166,3 +171,4 @@ impl Default for SatirRules {
         }
     }
 }
+

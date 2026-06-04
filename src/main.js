@@ -9,7 +9,8 @@ const APP_INFO = {
 
 const S = {
   rows: [], labels: [], sel: new Set(), curIdx: 0, page: 0, pageSize: 50, zoom: 80, search: '', headerFontSize: 6,
-  settings: null, editingRowIdx: null, deletedIndices: new Set(), sortCol: null, sortAsc: true
+  settings: null, editingRowIdx: null, deletedIndices: new Set(), sortCol: null, sortAsc: true,
+  islemKeywords: [],
 };
 
 window.sortRows = function(col) {
@@ -30,9 +31,100 @@ function updateSortUI() {
 }
 
 
+function snakeToCamelKey(key) {
+  return key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+function pickField(obj, key) {
+  if (!obj) return undefined;
+  if (obj[key] !== undefined && obj[key] !== null) return obj[key];
+  const camel = snakeToCamelKey(key);
+  if (obj[camel] !== undefined && obj[camel] !== null) return obj[camel];
+  return undefined;
+}
+
+/** Tauri IPC camelCase ile arayüzün snake_case kullanımını hizalar */
+function normalizeSettings(raw) {
+  if (!raw || typeof raw !== 'object') return raw;
+  const fwIn = raw.field_widths || raw.fieldWidths || {};
+  const fsIn = raw.field_font_sizes || raw.fieldFontSizes || {};
+  const srIn = raw.satir_rules || raw.satirRules || {};
+  const fwKeys = ['cari_unvan', 'malz_aciklama', 'ebat', 'adet_metrekare', 'islem', 'musteri_adi', 'diger_aciklamalar'];
+  const fwDefaults = { cari_unvan: 20, malz_aciklama: 35, ebat: 10, adet_metrekare: 6, islem: 10, musteri_adi: 18, diger_aciklamalar: 20 };
+  const fsDefaults = { cari_unvan: 25, malz_aciklama: 32, ebat: 30, adet_metrekare: 16, islem: 24, musteri_adi: 25, diger_aciklamalar: 22 };
+  const field_widths = {};
+  const field_font_sizes = {};
+  fwKeys.forEach(k => {
+    const w = pickField(fwIn, k);
+    const f = pickField(fsIn, k);
+    field_widths[k] = +(w ?? fwDefaults[k]);
+    field_font_sizes[k] = +(f ?? fsDefaults[k]);
+  });
+  let cariMax = pickField(raw, 'cari_max_chars');
+  if (cariMax === undefined && raw.cariMaxChars !== undefined) cariMax = raw.cariMaxChars;
+  if (cariMax === undefined && raw.cari_max_words !== undefined) cariMax = 45;
+
+  return {
+    width_mm: +(pickField(raw, 'width_mm') ?? 80),
+    height_mm: +(pickField(raw, 'height_mm') ?? 50),
+    field_widths,
+    field_font_sizes,
+    global_font_family: pickField(raw, 'global_font_family') ?? raw.globalFontFamily ?? 'Tahoma',
+    global_color: pickField(raw, 'global_color') ?? raw.globalColor ?? '#000000',
+    satir_rules: {
+      split_char: pickField(srIn, 'split_char') ?? srIn.splitChar ?? '/',
+      move_long_text: pickField(srIn, 'move_long_text') ?? srIn.moveLongText ?? true,
+      max_chars: +(pickField(srIn, 'max_chars') ?? srIn.maxChars ?? 80),
+    },
+    printer_name: pickField(raw, 'printer_name') ?? raw.printerName ?? '',
+    copies: +(pickField(raw, 'copies') ?? 1),
+    alignment: pickField(raw, 'alignment') ?? 'center',
+    header_text: pickField(raw, 'header_text') ?? raw.headerText ?? '',
+    cari_max_chars: +(cariMax ?? 45),
+    show_date: pickField(raw, 'show_date') ?? raw.showDate ?? true,
+    show_page_number: pickField(raw, 'show_page_number') ?? raw.showPageNumber ?? true,
+    label_margin: +(pickField(raw, 'label_margin') ?? raw.labelMargin ?? 1.5),
+    sequence_font_size: +(pickField(raw, 'sequence_font_size') ?? raw.sequenceFontSize ?? 7),
+  };
+}
+
+/** Kaydetmeden önce tüm form değerlerini S.settings'e yazar */
+function syncSettingsFromUI() {
+  S.settings.satir_rules = getRules();
+  S.settings.width_mm = +$('labelWidth').value;
+  S.settings.height_mm = +$('labelHeight').value;
+  S.settings.global_font_family = $('globalFont').value;
+  S.settings.global_color = $('globalColor').value;
+  S.settings.header_text = $('headerText').value;
+  S.settings.cari_max_chars = +$('cariMaxChars').value;
+  S.settings.show_date = $('chkShowDate').checked;
+  S.settings.show_page_number = $('chkShowPageNo').checked;
+  S.settings.label_margin = +($('labelMargin')?.value || 1.5);
+  S.settings.sequence_font_size = +($('sequenceFontSize')?.value || 7);
+  S.settings.copies = +$('copies').value;
+  const activeAlign = document.querySelector('.align-btn.active');
+  if (activeAlign) S.settings.alignment = activeAlign.dataset.align;
+  $('fieldWidthSliders')?.querySelectorAll('.slider-width').forEach(inp => {
+    S.settings.field_widths[inp.dataset.key] = +inp.value;
+  });
+  $('fieldWidthSliders')?.querySelectorAll('.font-size-input').forEach(inp => {
+    S.settings.field_font_sizes[inp.dataset.key] = +inp.value;
+  });
+}
+
+window.startEtiketApp = async function startEtiketApp() {
+  if (window._etiketAppStarted) return;
+  window._etiketAppStarted = true;
+  S.settings = normalizeSettings(await invoke('load_startup_settings'));
+  initUI();
+  refreshAll();
+  loadPrinters();
+  loadRecentFiles();
+};
+
 document.addEventListener('DOMContentLoaded', async () => {
-  S.settings = await invoke('get_default_settings');
-  initUI(); refreshAll(); loadPrinters(); loadRecentFiles();
+  const ok = await checkLicenseOnStartup();
+  if (ok) await window.startEtiketApp();
 });
 
 function initUI() {
@@ -61,7 +153,7 @@ function initUI() {
   $('globalColor').onchange = e => { S.settings.global_color = e.target.value; renderPreview(); };
   $('headerText').onchange = e => { S.settings.header_text = e.target.value; renderPreview(); };
   $('headerFontSize').onchange = e => { S.headerFontSize = +e.target.value; renderPreview(); };
-  $('cariMaxWords').onchange = e => { S.settings.cari_max_words = +e.target.value; reparse(); };
+  $('cariMaxChars').onchange = e => { S.settings.cari_max_chars = +e.target.value; reparse(); };
   $('chkShowDate').onchange = e => { S.settings.show_date = e.target.checked; renderPreview(); };
   $('chkShowPageNo').onchange = e => { S.settings.show_page_number = e.target.checked; renderPreview(); };
   $('labelMargin').onchange = e => { S.settings.label_margin = +e.target.value; renderPreview(); };
@@ -74,8 +166,9 @@ function initUI() {
   $('btnPrint').onclick = printLabels;
   $('btnPDF').onclick = generatePDF;
   $('btnSaveSettings').onclick = saveSettings;
+  $('btnSaveAsDefault').onclick = saveAsDefaultSettings;
   $('btnLoadSettings').onclick = loadSettingsUI;
-  $('btnResetSettings').onclick = async () => { S.settings = await invoke('get_default_settings'); refreshAll(); };
+  $('btnResetSettings').onclick = async () => { S.settings = normalizeSettings(await invoke('get_default_settings')); refreshAll(); };
   $('btnRecent').onclick = () => $('recentDropdown').classList.toggle('hidden');
   $('btnManualLabel').onclick = () => { $('manualModal').classList.remove('hidden'); };
   $('btnCloseModal').onclick = () => { $('manualModal').classList.add('hidden'); };
@@ -108,10 +201,10 @@ function initDragAndDrop() {
       const paths = event.payload?.paths || event.payload; 
       if (paths && Array.isArray(paths) && paths.length > 0) {
         const path = paths[0];
-        if (path.toLowerCase().endsWith('.xlsx') || path.toLowerCase().endsWith('.xls')) {
+        if (path.toLowerCase().endsWith('.xlsx') || path.toLowerCase().endsWith('.xls') || path.toLowerCase().endsWith('.xlsm')) {
           await handleFileSelect(path);
         } else {
-          setStatus('error', 'Lütfen geçerli bir Excel (.xlsx, .xls) dosyası sürükleyin.');
+          setStatus('error', 'Lütfen geçerli bir Excel (.xlsx, .xls, .xlsm) dosyası sürükleyin.');
         }
       }
     });
@@ -133,7 +226,7 @@ function initDragAndDrop() {
     document.body.classList.remove('drag-over');
     if (e.dataTransfer && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
-      if (file.path && (file.path.toLowerCase().endsWith('.xlsx') || file.path.toLowerCase().endsWith('.xls'))) {
+      if (file.path && (file.path.toLowerCase().endsWith('.xlsx') || file.path.toLowerCase().endsWith('.xls') || file.path.toLowerCase().endsWith('.xlsm'))) {
         await handleFileSelect(file.path);
       }
     }
@@ -203,6 +296,124 @@ function initAbout() {
               <div><dt>Lisans</dt><dd>${APP_INFO.license}</dd></div>
               <div><dt>Telif</dt><dd>Copyright ${APP_INFO.copyright} ${APP_INFO.developer}.</dd></div>
             </dl>
+
+            <section class="about-section">
+              <h3>Excel Dosyası — Sütun Adları</h3>
+              <p>
+                Uygulama, ilk 10 satır içinde başlık satırını arar.
+                Başlık metni üzerinde şu normalizasyon uygulanır: büyük/küçük harf farkı yoktur; boşluk, nokta (.), tire (-),
+                alt çizgi (_) yok sayılır; Türkçe harfler eşdeğer harflere çevrilir.
+                Örnek: <code>CARİ ÜNVAN</code> ~ <code>CARI_UNVAN</code>.
+                Yükleme için en az <strong>2 temel alan</strong> tanınmalıdır:
+                <code>Cari Ünvan</code>, <code>Malz. Açıklama</code>, <code>Satır Açıklama</code>, <code>Bek. Sipariş</code>.
+              </p>
+
+              <table class="about-col-table">
+                <thead>
+                  <tr>
+                    <th>Orijinal Sütun</th>
+                    <th>Geçerli Alternatifler</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>CARI_UNVAN</code></td>
+                    <td><code>CARI</code>, <code>FIRMA</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>MALZ_ACIKLAMA</code></td>
+                    <td><code>MALZ</code>, <code>URUN</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>SATIR_ACIKLAMA</code></td>
+                    <td><code>ACIKLAMA</code>, <code>SATIR</code>, <code>ACK</code>, <code>ACK</code> (AÇK)</td>
+                  </tr>
+                  <tr>
+                    <td><code>BEKLEYEN_SIPARIS</code></td>
+                    <td><code>SIPARIS</code>, <code>SIP</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>SEVKIYAT_ADI</code></td>
+                    <td><code>SEVK</code>, <code>ADRES</code>, <code>SUBE</code> (ŞUBE)</td>
+                  </tr>
+                  <tr>
+                    <td><code>DOKUMANIZLEME_NO</code></td>
+                    <td><code>MUSTERI</code>, <code>MS</code> (MŞ/MS)</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div class="about-note">
+                Not: Normalizasyon sonrası eşleşme yapılır. Bu nedenle <code>CARİ</code>/<code>cari</code>,
+                <code>ŞUBE</code>/<code>sube</code> gibi yazımlar aynı kabul edilir.
+                <code>SIP</code> ve <code>MS</code> için tam başlık eşleşmesi gerekir.
+              </div>
+
+              <p><strong>Eşleşme mantığı:</strong> Başlık içinde ilgili anahtar kelime geçiyorsa eşleşir; <code>SIP</code> ve <code>MS</code> için birebir başlık gerekir.</p>
+
+              <p>
+                <strong>Satır Açıklama</strong> sütunundan ebat, adet, işlem ve müşteri adı otomatik ayrıştırılır.
+                ENRULO ürünlerde ebat/m² farklı sütunlardan okunabilir; ayrıntılar için Genel Ayarlar sekmesine bakın.
+              </p>
+
+              <div class="about-examples">
+                <div class="about-example">
+                  <div class="about-example-title">Örnek Başlıklar — Uzun Sistem Sürümü</div>
+                  <table class="about-mini-table">
+                    <thead>
+                      <tr>
+                        <th>CARI_UNVAN</th>
+                        <th>MALZ_ACIKLAMA</th>
+                        <th>SATIR_ACIKLAMA</th>
+                        <th>BEKLEYEN_SIPARIS</th>
+                        <th>SEVKIYAT_ADI</th>
+                        <th>DOKUMANIZLEME_NO</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>CARİ ÜNVANI</td>
+                        <td>MALZEME AÇIKLAMASI</td>
+                        <td>SATIR AÇIKLAMA METNİ</td>
+                        <td>SİPARİŞ MİKTARI</td>
+                        <td>SEVKİYAT ADRESİ</td>
+                        <td>MÜŞTERİ ADI SOYADI</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="about-example">
+                  <div class="about-example-title">Örnek Başlıklar — Kısa Geçerli Sürüm</div>
+                  <table class="about-mini-table">
+                    <thead>
+                      <tr>
+                        <th>CARI</th>
+                        <th>URUN</th>
+                        <th>ACK</th>
+                        <th>SIP</th>
+                        <th>SEVK</th>
+                        <th>MS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>ABC HALI</td>
+                        <td>120*200</td>
+                        <td>SAÇAKLI</td>
+                        <td>2</td>
+                        <td>İZMİR ŞUBE</td>
+                        <td>MŞ: ALİ DEMİR</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <p class="about-note">
+                Sütun sırası önemli değildir; başlık satırındaki metne göre otomatik eşleştirme yapılır.
+                Veri satırları boş bırakılmamalıdır — cari, malzeme ve satır açıklamasından en az biri dolu olmalıdır.
+              </p>
+            </section>
           </div>
         </div>
       </div>`);
@@ -297,9 +508,17 @@ function getRules() {
   return { split_char: $('splitCharSelect').value, move_long_text: $('chkMoveLong').checked, max_chars: +$('maxChars').value };
 }
 
+function getParseArgs() {
+  return {
+    rules: S.settings.satir_rules,
+    cariMaxChars: S.settings.cari_max_chars ?? 45,
+    extraIslemKeywords: S.islemKeywords || [],
+  };
+}
+
 async function reparse() {
   S.settings.satir_rules = getRules();
-  S.labels = await invoke('parse_all_labels', { rules: S.settings.satir_rules, cariMaxWords: S.settings.cari_max_words });
+  S.labels = await invoke('parse_all_labels', getParseArgs());
   renderPreview(); updateExample();
 }
 
@@ -381,7 +600,7 @@ async function saveManualLabel() {
     S.sel.add(manualIdx);
 
     // Backend'den temiz label listesini çek
-    S.labels = await invoke('parse_all_labels', { rules: S.settings.satir_rules, cariMaxWords: S.settings.cari_max_words });
+    S.labels = await invoke('parse_all_labels', getParseArgs());
     renderTable();
     renderPreview();
     updSel();
@@ -670,7 +889,11 @@ function refreshAll() {
   $('splitCharSelect').value = S.settings.satir_rules.split_char;
   $('chkMoveLong').checked = S.settings.satir_rules.move_long_text;
   $('globalFont').value = S.settings.global_font_family; $('globalColor').value = S.settings.global_color;
-  $('headerText').value = S.settings.header_text; $('cariMaxWords').value = S.settings.cari_max_words;
+  $('headerText').value = S.settings.header_text;
+  $('cariMaxChars').value = S.settings.cari_max_chars ?? 45;
+  document.querySelectorAll('.align-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.align === (S.settings.alignment || 'center'));
+  });
   $('chkShowDate').checked = S.settings.show_date; $('chkShowPageNo').checked = S.settings.show_page_number;
   if ($('labelMargin')) $('labelMargin').value = S.settings.label_margin || 1.5;
   if ($('sequenceFontSize')) $('sequenceFontSize').value = S.settings.sequence_font_size || 8;
@@ -745,7 +968,8 @@ async function printLabels() {
 
 async function saveSettings() {
   try {
-    const path = await invoke('save_settings_to_file', { settingsData: S.settings });
+    syncSettingsFromUI();
+    const path = await invoke('save_settings_to_file', { settingsData: normalizeSettings(S.settings) });
     setStatus('success', 'Ayarlar kaydedildi: ' + path.split('\\').pop());
   } catch (e) {
     if (e !== "İptal edildi") setStatus('error', '' + e);
@@ -755,11 +979,22 @@ async function saveSettings() {
 async function loadSettingsUI() {
   try {
     const data = await invoke('load_settings_from_file');
-    S.settings = data;
+    S.settings = normalizeSettings(data);
     refreshAll();
     setStatus('success', 'Ayarlar yüklendi.');
   } catch (e) {
     if (e !== "İptal edildi") setStatus('error', '' + e);
+  }
+}
+
+async function saveAsDefaultSettings() {
+  try {
+    syncSettingsFromUI();
+    const path = await invoke('save_startup_settings', { settingsData: normalizeSettings(S.settings) });
+    setStatus('success', 'Varsayılan ayarlar kaydedildi. Sonraki açılışta yüklenecek.');
+    console.log('[Ayarlar] startup_default:', path);
+  } catch (e) {
+    setStatus('error', '' + e);
   }
 }
 
@@ -884,11 +1119,32 @@ async function fbLoadSuggestions() {
 
     const islemSnap = await _db.collection('IslemList').orderBy('name').get();
     const islemDL = $('islemDatalist');
-    if (islemDL) islemDL.innerHTML = islemSnap.docs.map(d => `<option value="${d.data().name}"></option>`).join('');
+    const islemNames = islemSnap.docs
+      .map(d => (d.data().name || '').trim())
+      .filter(n => n && !n.startsWith('_'));
+    if (islemDL) islemDL.innerHTML = islemNames.map(n => `<option value="${esc(n)}"></option>`).join('');
+    S.islemKeywords = islemNames;
 
-    console.log(`[Firebase] ${cariSnap.size} cari, ${malzSnap.size} malzeme, ${islemSnap.size} işlem önerisi yüklendi.`);
+    console.log(`[Firebase] ${cariSnap.size} cari, ${malzSnap.size} malzeme, ${islemNames.length} işlem önerisi yüklendi.`);
+    if (window._etiketAppStarted && S.rows.length) {
+      reparse().catch(() => {});
+    }
   } catch (e) { console.warn('[Firebase] Öneri yükleme hatası:', e); }
 }
+
+/** Admin veri yönetimi ve öneri listeleri için Firebase API */
+window.EtiketFirebase = {
+  get db() { return _db; },
+  docKey(name) { return (name || '').trim().toUpperCase(); },
+  collections: [
+    { id: 'CariList', label: 'Cari listesi', singular: 'cari', addPlaceholder: 'Yeni cari ünvan...' },
+    { id: 'MalzemeList', label: 'Malzeme listesi', singular: 'malzeme', addPlaceholder: 'Yeni malzeme adı...' },
+    { id: 'IslemList', label: 'İşlem listesi', singular: 'işlem', addPlaceholder: 'Yeni işlem adı...' },
+  ],
+  isReady() { return !!_db && typeof firebase !== 'undefined'; },
+  async reloadSuggestions() { await fbLoadSuggestions(); },
+  getIslemKeywords() { return S.islemKeywords || []; },
+};
 
 // Firebase'i DOM yüklendiğinde başlat
 if (document.readyState === 'loading') {

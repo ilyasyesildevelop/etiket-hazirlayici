@@ -1,3 +1,4 @@
+mod admin_config;
 mod excel_parser;
 mod models;
 mod pplb;
@@ -6,10 +7,12 @@ mod printer_win;
 mod satir_parser;
 mod settings;
 
+use admin_config::LicenseStatus;
 use models::*;
 use satir_parser::ParsedSatir;
 use std::process::Command;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::State;
 
 #[cfg(windows)]
@@ -26,10 +29,96 @@ fn hide_console_window(command: &mut Command) -> &mut Command {
     command
 }
 
+struct AdminSession {
+    token: String,
+    expires_at: Instant,
+}
+
 struct AppState {
     rows: Mutex<Vec<RawRow>>,
     manual_labels: Mutex<Vec<ParsedLabel>>,
     current_file: Mutex<String>,
+    admin_session: Mutex<Option<AdminSession>>,
+}
+
+const ADMIN_SESSION_HOURS: u64 = 2;
+
+fn validate_admin_token(state: &State<AppState>, token: &str) -> Result<(), String> {
+    let session = state.admin_session.lock().unwrap();
+    match session.as_ref() {
+        Some(s) if s.token == token && s.expires_at > Instant::now() => Ok(()),
+        Some(_) => Err("Oturum süresi doldu. Tekrar giriş yapın.".into()),
+        None => Err("Geçersiz oturum. Tekrar giriş yapın.".into()),
+    }
+}
+
+fn new_admin_token(state: &State<AppState>) -> String {
+    let token = format!(
+        "{:x}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+    *state.admin_session.lock().unwrap() = Some(AdminSession {
+        token: token.clone(),
+        expires_at: Instant::now() + Duration::from_secs(ADMIN_SESSION_HOURS * 3600),
+    });
+    token
+}
+
+#[tauri::command]
+fn get_license_status() -> LicenseStatus {
+    admin_config::license_status()
+}
+
+#[tauri::command]
+fn admin_login(
+    username: String,
+    password: String,
+    state: State<AppState>,
+) -> Result<serde_json::Value, String> {
+    admin_config::verify_login(&username, &password)?;
+    let token = new_admin_token(&state);
+    let (user, expiry) = admin_config::admin_info();
+    Ok(serde_json::json!({
+        "token": token,
+        "username": user,
+        "expiry_date": expiry,
+    }))
+}
+
+#[tauri::command]
+fn admin_logout(token: String, state: State<AppState>) {
+    let mut session = state.admin_session.lock().unwrap();
+    if session.as_ref().map(|s| s.token.as_str()) == Some(token.as_str()) {
+        *session = None;
+    }
+}
+
+#[tauri::command]
+fn admin_get_info(token: String, state: State<AppState>) -> Result<serde_json::Value, String> {
+    validate_admin_token(&state, &token)?;
+    let (username, expiry_date) = admin_config::admin_info();
+    Ok(serde_json::json!({ "username": username, "expiry_date": expiry_date }))
+}
+
+#[tauri::command]
+fn admin_set_expiry(token: String, expiry_date: String, state: State<AppState>) -> Result<(), String> {
+    validate_admin_token(&state, &token)?;
+    admin_config::set_expiry_date(&expiry_date)
+}
+
+#[tauri::command]
+fn admin_change_credentials(
+    token: String,
+    current_password: String,
+    new_username: String,
+    new_password: String,
+    state: State<AppState>,
+) -> Result<(), String> {
+    validate_admin_token(&state, &token)?;
+    admin_config::change_credentials(&current_password, &new_username, &new_password)
 }
 
 #[tauri::command]
@@ -84,15 +173,25 @@ fn parse_satir(
     bekleyen: String,
     dokumanizleme: String,
     rules: SatirRules,
+    extra_islem_keywords: Vec<String>,
 ) -> ParsedSatir {
-    satir_parser::parse_satir_aciklama(&text, &malz, &bekleyen, &dokumanizleme, "", &rules)
+    satir_parser::parse_satir_aciklama(
+        &text,
+        &malz,
+        &bekleyen,
+        &dokumanizleme,
+        "",
+        &rules,
+        &extra_islem_keywords,
+    )
 }
 
 #[tauri::command]
 fn parse_all_labels(
     state: State<AppState>,
     rules: SatirRules,
-    cari_max_words: usize,
+    cari_max_chars: usize,
+    extra_islem_keywords: Vec<String>,
 ) -> Vec<ParsedLabel> {
     let rows = state.rows.lock().unwrap();
     let mut result: Vec<ParsedLabel> = rows
@@ -105,9 +204,10 @@ fn parse_all_labels(
                 &row.dokumanizleme_no,
                 &row.cari_unvan,
                 &rules,
+                &extra_islem_keywords,
             );
             ParsedLabel {
-                cari_unvan: satir_parser::truncate_cari(&row.cari_unvan, cari_max_words),
+                cari_unvan: satir_parser::truncate_cari(&row.cari_unvan, cari_max_chars),
                 malz_aciklama: row.malz_aciklama.clone(),
                 ebat: parsed.ebat,
                 islem: parsed.islem,
@@ -226,6 +326,17 @@ fn list_saved_settings() -> Vec<String> {
 #[tauri::command]
 fn get_default_settings() -> LabelSettings {
     LabelSettings::default()
+}
+
+#[tauri::command]
+fn load_startup_settings() -> LabelSettings {
+    settings::load_startup_settings().unwrap_or_default()
+}
+
+#[tauri::command]
+fn save_startup_settings(settings_data: LabelSettings) -> Result<String, String> {
+    settings::save_startup_settings(&settings_data)?;
+    Ok(settings::startup_settings_path().to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -433,8 +544,15 @@ pub fn run() {
             rows: std::sync::Mutex::new(Vec::new()),
             manual_labels: std::sync::Mutex::new(Vec::new()),
             current_file: std::sync::Mutex::new(String::new()),
+            admin_session: std::sync::Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
+            get_license_status,
+            admin_login,
+            admin_logout,
+            admin_get_info,
+            admin_set_expiry,
+            admin_change_credentials,
             open_file_dialog,
             get_sheets,
             load_excel,
@@ -451,6 +569,8 @@ pub fn run() {
             load_settings_from_file,
             list_saved_settings,
             get_default_settings,
+            load_startup_settings,
+            save_startup_settings,
             get_recent_files,
             list_printers,
             generate_pplb,

@@ -13,6 +13,134 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
+  <!-- Lisans / Admin kapısı -->
+  <div id="licenseOverlay" class="license-overlay hidden">
+    <div class="license-card">
+      <div id="licenseLoginView">
+        <div class="license-brand">
+          <span class="material-icons-round">lock</span>
+          <h1>Etiket Hazırlayıcı</h1>
+        </div>
+        <p id="licenseLockMessage" class="license-message">Lisans süresi doldu.</p>
+        <form id="adminLoginForm" class="license-form">
+          <div class="form-group">
+            <label>Yönetici kullanıcı adı</label>
+            <input type="text" id="adminUsername" autocomplete="username" required />
+          </div>
+          <div class="form-group">
+            <label>Şifre</label>
+            <input type="password" id="adminPassword" autocomplete="current-password" required />
+          </div>
+          <p id="adminLoginError" class="license-error hidden"></p>
+          <button type="submit" class="btn btn-primary btn-block">
+            <span class="material-icons-round">login</span> Yönetici Girişi
+          </button>
+        </form>
+      </div>
+      <div id="licenseAdminView" class="license-admin-layout hidden">
+        <div class="license-admin-header">
+          <div class="license-brand license-brand-compact">
+            <span class="material-icons-round">admin_panel_settings</span>
+            <h1>Yönetim Paneli</h1>
+          </div>
+          <nav class="admin-nav-tabs" role="tablist">
+            <button type="button" class="admin-nav-tab active" data-admin-panel="settings" role="tab">Lisans</button>
+            <button type="button" class="admin-nav-tab" data-admin-panel="data" role="tab">Veri Tabloları</button>
+          </nav>
+          <p id="adminPanelError" class="license-error hidden"></p>
+          <p id="adminPanelSuccess" class="license-success hidden"></p>
+        </div>
+
+        <div class="license-admin-body">
+        <div id="adminPanelSettings" class="admin-panel-pane">
+          <section class="admin-section admin-section-date">
+            <p class="license-section-title">Son kullanma tarihi</p>
+            <div class="admin-date-row">
+              <input type="date" id="adminExpiryDate" required aria-label="Son kullanma tarihi" />
+              <button type="button" id="btnAdminSaveExpiry" class="btn btn-primary btn-save-date" title="Tarihi kaydet">
+                <span class="material-icons-round">save</span> Kaydet
+              </button>
+            </div>
+            <small class="field-hint">Seçilen günde uygulama kilitlenir.</small>
+          </section>
+
+          <details class="admin-details">
+            <summary>Yönetici hesabı <span class="admin-optional">(isteğe bağlı)</span></summary>
+            <div class="admin-details-body license-form">
+              <div class="form-group">
+                <label>Yeni kullanıcı adı</label>
+                <input type="text" id="adminNewUsername" autocomplete="off" />
+              </div>
+              <div class="form-group">
+                <label>Yeni şifre</label>
+                <input type="password" id="adminNewPassword" autocomplete="new-password" />
+              </div>
+              <div class="form-group">
+                <label>Mevcut şifreniz</label>
+                <input type="password" id="adminCurrentPassword" autocomplete="current-password" />
+              </div>
+              <button type="button" id="btnAdminSaveCreds" class="btn btn-secondary btn-block">
+                <span class="material-icons-round">person</span> Hesabı Güncelle
+              </button>
+            </div>
+          </details>
+        </div>
+
+        <div id="adminPanelData" class="admin-panel-pane hidden">
+          <div class="admin-data-toolbar">
+            <label class="admin-data-label">Tablo</label>
+            <select id="adminDataCollection" class="admin-data-select"></select>
+            <div class="admin-data-search-wrap">
+              <span class="material-icons-round">search</span>
+              <input type="search" id="adminDataSearch" placeholder="Kayıt ara..." />
+            </div>
+          </div>
+          <div class="admin-data-add-row">
+            <input type="text" id="adminDataNewName" placeholder="Yeni kayıt..." />
+            <button type="button" id="btnAdminDataAdd" class="btn btn-primary">
+              <span class="material-icons-round">add</span> Ekle
+            </button>
+          </div>
+          <div class="admin-data-bulk">
+            <label class="admin-data-check-all">
+              <input type="checkbox" id="adminDataSelectAll" /> Tümünü seç
+            </label>
+            <span id="adminDataSelectionInfo" class="admin-data-selection-info">0 seçili</span>
+            <button type="button" id="btnAdminDataDeleteSelected" class="btn btn-danger btn-small" disabled>
+              <span class="material-icons-round">delete</span> Seçilenleri sil
+            </button>
+            <button type="button" id="btnAdminDataRefresh" class="btn btn-ghost btn-small" title="Yenile">
+              <span class="material-icons-round">refresh</span>
+            </button>
+          </div>
+          <div class="admin-data-table-wrap">
+            <table class="admin-data-table" id="adminDataTable">
+              <thead>
+                <tr>
+                  <th class="col-check"></th>
+                  <th>Ad</th>
+                  <th class="col-actions">İşlem</th>
+                </tr>
+              </thead>
+              <tbody id="adminDataTableBody">
+                <tr><td colspan="3" class="admin-data-empty">Yükleniyor...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p id="adminDataCount" class="admin-data-count">0 kayıt</p>
+        </div>
+        </div>
+
+        <div class="license-admin-footer license-actions">
+          <button type="button" id="btnAdminContinue" class="btn btn-accent btn-block hidden">
+            <span class="material-icons-round">check_circle</span> Uygulamayı Aç
+          </button>
+          <button type="button" id="btnAdminLogout" class="btn btn-ghost btn-block">Çıkış</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- TOP BAR -->
   <header id="topBar">
     <div class="top-left">
@@ -143,7 +271,7 @@
             <div class="size-inputs" style="margin-top:8px">
               <div class="input-group"><label>Başlık Metni</label><input type="text" id="headerText" value="" class="text-input" style="width:120px" /></div>
               <div class="input-group"><label>Başlık Punto</label><input type="number" id="headerFontSize" value="6" min="4" max="24" style="width:70px" /></div>
-              <div class="input-group"><label>Cari Maks. Kelime</label><input type="number" id="cariMaxWords" value="4" min="0" max="10" style="width:70px" /></div>
+              <div class="input-group"><label>Cari Maks. Karakter</label><input type="number" id="cariMaxChars" value="45" min="0" max="200" style="width:70px" title="0 = sınırsız; aşılırsa sonuna ... eklenir" /></div>
             </div>
             <div class="size-inputs" style="margin-top:8px">
               <div class="input-group"><label>Kenar Boşluğu (mm)</label><input type="number" id="labelMargin" value="1.5" min="0" max="5" step="0.5" style="width:120px" /></div>
@@ -205,6 +333,7 @@
       <button id="btnPrint" class="btn btn-action btn-print" disabled style="opacity:0.4;cursor:not-allowed;" title="Bu özellik yakında eklenecek"><span class="material-icons-round">print</span> Yazdır</button>
       <hr class="action-divider" />
       <button id="btnSaveSettings" class="btn btn-ghost"><span class="material-icons-round">save</span> Ayarları Kaydet</button>
+      <button id="btnSaveAsDefault" class="btn btn-ghost"><span class="material-icons-round">bookmark_added</span> Varsayılan Kaydet</button>
       <button id="btnLoadSettings" class="btn btn-ghost"><span class="material-icons-round">settings_backup_restore</span> Ayarları Yükle</button>
       <button id="btnResetSettings" class="btn btn-ghost"><span class="material-icons-round">restart_alt</span> Varsayılanlara Dön</button>
     </div>
@@ -221,6 +350,10 @@
       <span id="statusRowCount">Kayıt: 0</span>
       <span class="status-sep">│</span>
       <span id="statusSelected">Seçili: 0</span>
+      <span class="status-sep">│</span>
+      <button type="button" id="btnOpenAdmin" class="status-admin-btn" title="Yönetim paneli">
+        <span class="material-icons-round">admin_panel_settings</span>
+      </button>
     </div>
   </div>
 
@@ -281,6 +414,8 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   
+  <script src="admin.js"></script>
   <script src="main.js"></script>
+  <script src="admin-data.js"></script>
 </body>
 </html>

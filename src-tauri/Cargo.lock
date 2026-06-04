@@ -967,11 +967,14 @@ name = "etiket-hazirlayici"
 version = "26.6.0"
 dependencies = [
  "calamine",
+ "chrono",
  "dirs",
  "encoding_rs",
+ "hex",
  "regex",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

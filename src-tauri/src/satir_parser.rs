@@ -1,6 +1,7 @@
 use crate::models::SatirRules;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +73,42 @@ fn standardize_islem(raw: &str) -> String {
     upper
 }
 
+fn build_islem_keyword_list(extra: &[String]) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut list = Vec::new();
+    let mut push = |raw: &str| {
+        let t = raw.trim();
+        if t.is_empty() || t.eq_ignore_ascii_case("_init") {
+            return;
+        }
+        let key = t.to_uppercase();
+        if seen.insert(key) {
+            list.push(t.to_string());
+        }
+    };
+    for &k in ISLEM_KEYWORDS {
+        push(k);
+    }
+    for e in extra {
+        push(e);
+    }
+    list.sort_by(|a, b| b.len().cmp(&a.len()));
+    list
+}
+
+fn match_islem_keywords(remaining: &mut String, text: &str, keywords: &[String]) -> String {
+    for keyword in keywords {
+        let Ok(re) = Regex::new(&tr_regex(keyword)) else {
+            continue;
+        };
+        if re.is_match(text) {
+            *remaining = re.replace(remaining, " ").to_string();
+            return standardize_islem(keyword);
+        }
+    }
+    String::new()
+}
+
 pub fn parse_satir_aciklama(
     satir: &str,
     malz: &str,
@@ -79,6 +116,7 @@ pub fn parse_satir_aciklama(
     dokumanizleme: &str,
     cari: &str,
     rules: &SatirRules,
+    extra_islem_keywords: &[String],
 ) -> ParsedSatir {
     let satir = satir.trim();
     let malz = malz.trim();
@@ -140,8 +178,9 @@ pub fn parse_satir_aciklama(
         (bek_adet, String::new(), p_count)
     };
 
-    // 4. Extract İŞLEM
-    let islem = extract_islem(&mut remaining);
+    // 4. Extract İŞLEM (sabit anahtar kelimeler + Firebase IslemList)
+    let islem_keywords = build_islem_keyword_list(extra_islem_keywords);
+    let islem = extract_islem(&mut remaining, &islem_keywords);
 
     // 5. Extract MÜŞTERİ ADI
     let musteri_adi = extract_musteri(&mut remaining, dokumanizleme, cari);
@@ -244,7 +283,7 @@ fn tr_regex(word: &str) -> String {
     format!(r"(?i)\b{}\b", pattern)
 }
 
-fn extract_islem(remaining: &mut String) -> String {
+fn extract_islem(remaining: &mut String, islem_keywords: &[String]) -> String {
     let mut clone = remaining.clone();
     
     // 1. Önce "OVAL" kelimesini arayalım
@@ -333,21 +372,8 @@ fn extract_islem(remaining: &mut String) -> String {
             *remaining = remaining.replace(&matched, " ");
             islem = format!("BRD {}", &cap[1]);
         } else {
-            // 5. Genel keyword kontrolü
-            static KEYWORDS_RE: OnceLock<Vec<(&'static str, Regex)>> = OnceLock::new();
-            let keywords_re = KEYWORDS_RE.get_or_init(|| {
-                ISLEM_KEYWORDS.iter().filter_map(|&k| {
-                    Regex::new(&tr_regex(k)).ok().map(|r| (k, r))
-                }).collect()
-            });
-
-            for (keyword, re) in keywords_re {
-                if re.is_match(&clone) {
-                    *remaining = re.replace(remaining, " ").to_string();
-                    islem = standardize_islem(keyword);
-                    break;
-                }
-            }
+            // 5. Genel keyword kontrolü (sabit + Firebase listesi, uzun eşleşme önce)
+            islem = match_islem_keywords(remaining, &clone, islem_keywords);
         }
     }
     
@@ -499,6 +525,86 @@ fn format_metrekare(bekleyen: &str) -> String {
 }
 
 static CARI_REPLACEMENTS: OnceLock<Vec<(Regex, &'static str)>> = OnceLock::new();
+static UNVAN_TOKEN_RE: OnceLock<Regex> = OnceLock::new();
+
+fn is_unvan_token(word: &str) -> bool {
+    let w = word.trim().trim_end_matches('.');
+    if w.is_empty() {
+        return false;
+    }
+    if w.eq_ignore_ascii_case("VE") {
+        return true;
+    }
+    UNVAN_TOKEN_RE
+        .get_or_init(|| {
+            Regex::new(
+                r"(?i)^(İNŞ|INŞ|INSAAT|INŞAAT|TUR|TURIZM|TURİZM|SAN|SANAYI|SANAYİ|TİC|TIC|TICARET|TİCARET|LTD|LIMITED|LİMİTED|ŞTİ|STI|SIRKETI|ŞİRKETİ|A\.Ş|A\.S|TAAH|MOB|MOBILYA|MOBİLYA|TEKS|TEKSTIL|TEKSTİL|OTO|OTOMOTIV|OTOMOTİV|LOJ|LOJISTIK|LOJİSTİK|MÜH|ITH|İTH|IHR|İHR|HİZ|DAY|TÜK|ORG|PAZ|ORT|GER|ÜRÜN|MEF|MALL|TAŞ|DANIŞM|ZEM)$",
+            )
+            .unwrap()
+        })
+        .is_match(w)
+}
+
+/// Ünvan parçalarını nokta ile birleştirir: İNŞ.TUR.SAN.VE TİC.LTD.ŞTİ
+fn format_unvan_groups(legal: &[&str]) -> String {
+    if legal.is_empty() {
+        return String::new();
+    }
+    let mut groups: Vec<Vec<String>> = vec![];
+    let mut current: Vec<String> = vec![];
+
+    for (i, &word) in legal.iter().enumerate() {
+        let piece = word.trim().trim_end_matches('.').to_string();
+        let is_ve = piece.eq_ignore_ascii_case("VE");
+        current.push(if is_ve {
+            "VE".to_string()
+        } else {
+            piece
+        });
+
+        if is_ve {
+            let next_is_tic = legal.get(i + 1).map(|w| {
+                let t = w.trim().trim_end_matches('.').to_uppercase();
+                t.starts_with("TİC") || t.starts_with("TIC")
+            }).unwrap_or(false);
+            if next_is_tic {
+                groups.push(current);
+                current = vec![];
+            }
+        }
+    }
+    if !current.is_empty() {
+        groups.push(current);
+    }
+
+    groups
+        .iter()
+        .map(|g| g.join("."))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn format_cari_unvan(s: &str) -> String {
+    let words: Vec<&str> = s.split_whitespace().collect();
+    if words.is_empty() {
+        return String::new();
+    }
+
+    let Some(start) = words.iter().position(|w| is_unvan_token(w)) else {
+        return s.to_string();
+    };
+
+    let company = words[..start].join(" ");
+    let legal = format_unvan_groups(&words[start..]);
+
+    if company.is_empty() {
+        legal
+    } else if legal.is_empty() {
+        company
+    } else {
+        format!("{} {}", company, legal)
+    }
+}
 
 pub fn abbreviate_cari(cari: &str) -> String {
     let replacements = CARI_REPLACEMENTS.get_or_init(|| {
@@ -509,56 +615,92 @@ pub fn abbreviate_cari(cari: &str) -> String {
             (Regex::new(r"(?i)\bMALLARI\b").unwrap(), "MALL."),
             (Regex::new(r"(?i)\bMEFRU[ŞS]AT\b").unwrap(), "MEF."),
             (Regex::new(r"(?i)\bTA[ŞS]IMACILIK\b").unwrap(), "TAŞ."),
-            (Regex::new(r"(?i)\b[İI]N[ŞS]AAT\b").unwrap(), "İNŞ."),
-            (Regex::new(r"(?i)\bTAAHH[ÜU]T\b").unwrap(), "TAAH."),
-            (Regex::new(r"(?i)\bSANAY[İI]\b").unwrap(), "SAN."),
-            (Regex::new(r"(?i)\bT[İI]CARET\b").unwrap(), "TİC."),
-            (Regex::new(r"(?i)\bL[İI]M[İI]TED\b").unwrap(), "LTD."),
-            (Regex::new(r"(?i)\bANON[İI]M\s+[ŞS][İI]RKET[İI]\b").unwrap(), "A.Ş."),
-            (Regex::new(r"(?i)\b[ŞS][İI]RKET[İI]\b").unwrap(), "ŞTİ."),
-            (Regex::new(r"(?i)\bDANI[ŞS]MANLIK\b").unwrap(), "DANIŞM."),
-            (Regex::new(r"(?i)\bORGAN[İI]ZASYON\b").unwrap(), "ORG."),
-            (Regex::new(r"(?i)\bPAZARLAMA\b").unwrap(), "PAZ."),
-            (Regex::new(r"(?i)\bORTAKLI[ĞG]I\b").unwrap(), "ORT."),
-            (Regex::new(r"(?i)\bMOB[İI]LYA\b").unwrap(), "MOB."),
-            (Regex::new(r"(?i)\bZEM[İI]N\s+KAPLAMALARI\b").unwrap(), "ZEM. KAPL."),
+            (Regex::new(r"(?i)\b[İI]N[ŞS]AAT\b").unwrap(), "İNŞ"),
+            (Regex::new(r"(?i)\bTAAHH[ÜU]T\b").unwrap(), "TAAH"),
+            (Regex::new(r"(?i)\bSANAY[İI]\b").unwrap(), "SAN"),
+            (Regex::new(r"(?i)\bT[İI]CARET\b").unwrap(), "TİC"),
+            (Regex::new(r"(?i)\bL[İI]M[İI]TED\b").unwrap(), "LTD"),
+            (Regex::new(r"(?i)\bANON[İI]M\s+[ŞS][İI]RKET[İI]\b").unwrap(), "A.Ş"),
+            (Regex::new(r"(?i)\b[ŞS][İI]RKET[İI]\b").unwrap(), "ŞTİ"),
+            (Regex::new(r"(?i)\bDANI[ŞS]MANLIK\b").unwrap(), "DANIŞM"),
+            (Regex::new(r"(?i)\bORGAN[İI]ZASYON\b").unwrap(), "ORG"),
+            (Regex::new(r"(?i)\bPAZARLAMA\b").unwrap(), "PAZ"),
+            (Regex::new(r"(?i)\bORTAKLI[ĞG]I\b").unwrap(), "ORT"),
+            (Regex::new(r"(?i)\bMOB[İI]LYA\b").unwrap(), "MOB"),
+            (Regex::new(r"(?i)\bZEM[İI]N\s+KAPLAMALARI\b").unwrap(), "ZEM KAPL"),
             (Regex::new(r"(?i)\bENRULO\s+N\b").unwrap(), "EN"),
             (Regex::new(r"(?i)\bENRULO\b").unwrap(), "EN"),
-            (Regex::new(r"(?i)\b[İI]THALAT\b").unwrap(), "İTH."),
-            (Regex::new(r"(?i)\b[İI]HRACAT\b").unwrap(), "İHR."),
-            (Regex::new(r"(?i)\bH[İI]ZMETLER[İI]\b").unwrap(), "HİZ."),
-            (Regex::new(r"(?i)\bTEKST[İI]L\b").unwrap(), "TEKS."),
-            (Regex::new(r"(?i)\bTUR[İI]ZM\b").unwrap(), "TUR."),
-            (Regex::new(r"(?i)\bOTOMOT[İI]V\b").unwrap(), "OTO."),
-            (Regex::new(r"(?i)\bLOJ[İI]ST[İI]K\b").unwrap(), "LOJ."),
-            (Regex::new(r"(?i)\bM[ÜU]HEND[İI]SL[İI]K\b").unwrap(), "MÜH."),
-            (Regex::new(r"(?i)\b[ÜU]R[ÜU]NLER[İI]\b").unwrap(), "ÜRÜN."),
-            (Regex::new(r"(?i)\bGERE[ÇC]LER[İI]\b").unwrap(), "GER."),
+            (Regex::new(r"(?i)\b[İI]THALAT\b").unwrap(), "İTH"),
+            (Regex::new(r"(?i)\b[İI]HRACAT\b").unwrap(), "İHR"),
+            (Regex::new(r"(?i)\bH[İI]ZMETLER[İI]\b").unwrap(), "HİZ"),
+            (Regex::new(r"(?i)\bTEKST[İI]L\b").unwrap(), "TEKS"),
+            (Regex::new(r"(?i)\bTUR[İI]ZM\b").unwrap(), "TUR"),
+            (Regex::new(r"(?i)\bOTOMOT[İI]V\b").unwrap(), "OTO"),
+            (Regex::new(r"(?i)\bLOJ[İI]ST[İI]K\b").unwrap(), "LOJ"),
+            (Regex::new(r"(?i)\bM[ÜU]HEND[İI]SL[İI]K\b").unwrap(), "MÜH"),
+            (Regex::new(r"(?i)\b[ÜU]R[ÜU]NLER[İI]\b").unwrap(), "ÜRÜN"),
+            (Regex::new(r"(?i)\bGERE[ÇC]LER[İI]\b").unwrap(), "GER"),
         ]
     });
 
-    let spaced_cari = cari.replace('.', ". ");
-    let mut s = spaced_cari;
+    // Nokta = boşluk (kelime ayırıcı)
+    let mut s = cari.replace('.', " ").replace(',', " ");
     for (re, repl) in replacements {
         s = re.replace_all(&s, *repl).to_string();
     }
-    
+
     static SPACE_RE: OnceLock<Regex> = OnceLock::new();
     let space_re = SPACE_RE.get_or_init(|| Regex::new(r"\s+").unwrap());
-    
-    space_re.replace_all(&s, " ").trim().to_string()
+    let normalized = space_re.replace_all(&s, " ").trim().to_string();
+
+    format_cari_unvan(&normalized)
 }
 
-pub fn truncate_cari(cari: &str, max_words: usize) -> String {
+pub fn truncate_cari(cari: &str, max_chars: usize) -> String {
+    const SUFFIX: &str = "...";
     let abbr = abbreviate_cari(cari);
-    if max_words == 0 {
+    if max_chars == 0 {
         return abbr;
     }
-    let words: Vec<&str> = abbr.split_whitespace().collect();
-    if words.len() <= max_words {
-        abbr
-    } else {
-        words[..max_words].join(" ")
+    let char_count = abbr.chars().count();
+    if char_count <= max_chars {
+        return abbr;
+    }
+    let suffix_len = SUFFIX.chars().count();
+    let keep = max_chars.saturating_sub(suffix_len);
+    if keep == 0 {
+        return SUFFIX.to_string();
+    }
+    format!("{}{}", abbr.chars().take(keep).collect::<String>(), SUFFIX)
+}
+
+#[cfg(test)]
+mod cari_tests {
+    use super::*;
+
+    #[test]
+    fn truncate_cari_adds_ellipsis() {
+        let long = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789EXTRA";
+        let out = truncate_cari(long, 45);
+        assert!(out.ends_with("..."));
+        assert_eq!(out.chars().count(), 45);
+    }
+
+    #[test]
+    fn dot_is_word_separator() {
+        let out = abbreviate_cari("HALI MOB. İNŞ.TUR.SAN.VE TİC.LTD.ŞTİ");
+        assert!(out.contains("İNŞ.TUR") || out.contains("INŞ.TUR"));
+    }
+
+    #[test]
+    fn full_unvan_abbreviation() {
+        let out = abbreviate_cari(
+            "HALICIOĞULLARI HALI MOBİLYA İNŞAAT TURİZM SANAYİ VE TİCARET LİMİTED ŞİRKETİ",
+        );
+        assert!(out.contains("HALICIOĞULLARI") || out.contains("HALICIO"));
+        assert!(out.contains("MOB"));
+        assert!(out.contains("İNŞ.TUR") || out.contains("INŞ.TUR"));
+        assert!(out.contains("TİC.LTD") || out.contains("TIC.LTD"));
     }
 }
 
@@ -568,7 +710,7 @@ mod musteri_tests {
 
     fn parse_musteri(satir: &str, dok: &str) -> String {
         let mut rem = satir.to_string();
-        extract_musteri(&mut rem, dok)
+        extract_musteri(&mut rem, dok, "")
     }
 
     #[test]
