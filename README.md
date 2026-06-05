@@ -13,7 +13,7 @@
 * **Sürükle & Bırak Desteği:** Excel dosyalarını doğrudan uygulama penceresine VEYA **uygulama kapalıyken kısayol/EXE dosyası üzerine** sürükleyerek anında listeye yükleyebilirsiniz.
 * **Özel Etiket (Manuel Kayıt):** Excel olmadan da sıfırdan manuel etiket ekleme, mevcut etiketleri düzenleme ve kopyalama imkanı.
 
-![Özel Etiket](screenshots/ozel-etiket.png)
+![Etiket](screenshots/etiket.png)
 
 * **Gelişmiş Önizleme:** Sağ tarafta yer alan etkileşimli alanda, etiketinizin yazıcıdan çıkmadan önceki birebir halini görebilir ve tek tıkla döndürebilirsiniz.
 * **Sütun Sıralama ve Boyutlandırma:** Tablo üzerindeki sütunları daraltıp genişletebilir, başlıklara tıklayarak artan/azalan düzende sıralayabilirsiniz.
