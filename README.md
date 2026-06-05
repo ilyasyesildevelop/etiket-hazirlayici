@@ -11,10 +11,16 @@
 
 * **Akıllı Veri Ayrıştırma (Parser):** Karışık satır açıklamalarından (Örn: "OVERLOK İÇ BORDÜR 120*200 5 ADET MŞ: ALİ") ebat, m², adet, işlem tipi (saçak, overlok vb.) ve müşteri adını otomatik çıkarır.
 * **Sürükle & Bırak Desteği:** Excel dosyalarını doğrudan uygulama penceresine VEYA **uygulama kapalıyken kısayol/EXE dosyası üzerine** sürükleyerek anında listeye yükleyebilirsiniz.
-* **Gelişmiş Önizleme:** Sağ tarafta yer alan etkileşimli alanda, etiketinizin yazıcıdan çıkmadan önceki birebir halini görebilir ve tek tıkla döndürebilirsiniz.
 * **Özel Etiket (Manuel Kayıt):** Excel olmadan da sıfırdan manuel etiket ekleme, mevcut etiketleri düzenleme ve kopyalama imkanı.
+
+![Özel Etiket](screenshots/ozel-etiket.png)
+
+* **Gelişmiş Önizleme:** Sağ tarafta yer alan etkileşimli alanda, etiketinizin yazıcıdan çıkmadan önceki birebir halini görebilir ve tek tıkla döndürebilirsiniz.
 * **Sütun Sıralama ve Boyutlandırma:** Tablo üzerindeki sütunları daraltıp genişletebilir, başlıklara tıklayarak artan/azalan düzende sıralayabilirsiniz.
 * **İnce Ayarlar:** Yazı fontu, punto büyüklükleri, etiket kenar boşluğu, tarih ve N/M sıra numarası yazdırma seçeneklerini kişiselleştirebilir ve bu ayarları JSON olarak kaydedebilirsiniz.
+
+![Ayarlar](screenshots/ayarlar.png)
+
 * **PDF Çıktı:** Seçili etiketleri, yazdırma ayarlarınıza uygun şekilde tarayıcıda PDF olarak tek sayfa-tek etiket formatında oluşturur.
 
 ## 📦 Kurulum ve Başlangıç
