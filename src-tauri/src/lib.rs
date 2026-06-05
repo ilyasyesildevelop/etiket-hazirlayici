@@ -13,7 +13,7 @@ use satir_parser::ParsedSatir;
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use tauri::State;
+use tauri::{Emitter, State};
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -482,15 +482,39 @@ fn send_to_printer(printer_name: String, pplb_data: Vec<u8>) -> Result<String, S
     }
 }
 
+#[tauri::command]
+fn get_startup_file() -> Option<String> {
+    for arg in std::env::args().skip(1) {
+        let lower = arg.to_lowercase();
+        if lower.ends_with(".xlsx") || lower.ends_with(".xls") || lower.ends_with(".xlsm") {
+            if std::path::Path::new(&arg).exists() {
+                return Some(arg);
+            }
+        }
+    }
+    None
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             use tauri::Manager;
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
+                
+                // Gelen argümanlar arasında excel dosyası varsa frontend'e bildir
+                for arg in args {
+                    let lower = arg.to_lowercase();
+                    if lower.ends_with(".xlsx") || lower.ends_with(".xls") || lower.ends_with(".xlsm") {
+                        if std::path::Path::new(&arg).exists() {
+                            let _ = window.emit("startup-file", arg);
+                            break;
+                        }
+                    }
+                }
             }
         }))
         .plugin(tauri_plugin_dialog::init())
@@ -576,6 +600,7 @@ pub fn run() {
             generate_pplb,
             send_to_printer,
             open_html_in_browser,
+            get_startup_file,
         ])
         .run(tauri::generate_context!())
         .expect("Uygulama başlatılırken hata oluştu");

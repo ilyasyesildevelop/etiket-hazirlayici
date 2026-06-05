@@ -120,6 +120,12 @@ window.startEtiketApp = async function startEtiketApp() {
   refreshAll();
   loadPrinters();
   loadRecentFiles();
+
+  // İlk açılışta argüman olarak dosya gelmiş mi kontrol et (Uygulama kapalıyken sürükle-bırak)
+  const startupFile = await invoke('get_startup_file');
+  if (startupFile) {
+    await handleFileSelect(startupFile);
+  }
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -206,6 +212,14 @@ function initDragAndDrop() {
         } else {
           setStatus('error', 'Lütfen geçerli bir Excel (.xlsx, .xls, .xlsm) dosyası sürükleyin.');
         }
+      }
+    });
+
+    // Açık olan uygulamanın icon/exe'sine sürüklenirse (İkinci instance üzerinden)
+    listen('startup-file', async (event) => {
+      const path = event.payload;
+      if (path) {
+        await handleFileSelect(path);
       }
     });
   }
