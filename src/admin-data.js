@@ -1,6 +1,6 @@
-/** Admin: Firebase tablo CRUD (CariList, MalzemeList, IslemList) */
+/** Admin: Firebase tablo CRUD (MalzemeList, IslemList) */
 const AdminData = {
-  collectionId: 'CariList',
+  collectionId: 'MalzemeList',
   rows: [],
   selected: new Set(),
   filter: '',

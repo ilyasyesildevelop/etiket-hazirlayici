@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Binaries and build output
+*.exe
+etiket-hazırlayici/

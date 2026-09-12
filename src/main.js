@@ -488,11 +488,11 @@ async function loadSheet() {
     setStatus('success', `${data.total} kayıt yüklendi.`);
     $('statusRowCount').textContent = `Kayıt: ${data.total}`;
     
-    // Excel verilerinden eşsiz cari ve malzeme isimlerini Firebase'e gönder
-    if (typeof fbSaveCari === 'function') {
-      const uCari = new Set(S.rows.map(r => (r.cari_unvan||'').trim()).filter(Boolean));
+    // Excel verilerinden carileri yerel hafızaya kaydet, malzemeleri Firebase'e gönder
+    const uCari = [...new Set(S.rows.map(r => (r.cari_unvan||'').trim()).filter(Boolean))];
+    if (uCari.length) saveLocalCarilerBatch(uCari);
+    if (typeof fbSaveMalz === 'function') {
       const uMalz = new Set(S.rows.map(r => (r.malz_aciklama||'').trim()).filter(Boolean));
-      uCari.forEach(c => fbSaveCari(c));
       uMalz.forEach(m => fbSaveMalz(m));
     }
   } catch (e) { setStatus('error', '' + e); }
@@ -624,7 +624,7 @@ async function saveManualLabel() {
     $('mAdet').value = '1';
     $('manualModal').classList.add('hidden');
     setStatus('success', `Manuel etiket eklendi: ${cari || malz || '(isimsiz)'}`);
-    if (cari) fbSaveCari(cari);
+    if (cari) saveLocalCari(cari);
     if (malz) fbSaveMalz(malz);
     if (islem && typeof fbSaveIslem === 'function') fbSaveIslem(islem);
   } catch(e) { setStatus('error', '' + e); }
@@ -850,7 +850,12 @@ function wordWrap(ctx, text, maxW, maxLines) {
   return lines.slice(0, maxLines);
 }
 
-function todayStr() { const d = new Date(); return `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`; }
+function todayStr() {
+  const d = new Date();
+  const date = `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`;
+  const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+  return `${date} ${time}`;
+}
 
 // ===== SETTINGS UI =====
 function renderSliders() {
@@ -1063,12 +1068,94 @@ function fbInit() {
   }
 }
 
-// Koleksiyonlar yoksa sentinel belge ile oluştur
+// ===== YEREL CARİ LİSTESİ (LOCAL STORAGE) =====
+const LOCAL_CARILER_KEY = 'etiket_local_cariler';
+
+function isLikelyCari(name) {
+  if (!name || name.length < 2) return false;
+  const upper = name.toUpperCase().trim();
+  // Kumaş, kartela veya işlem isimleri cari listesine girmesin
+  const blacklisted = ['HENNA', 'NUBUK', 'KARTELA', 'PASPAS', 'OVERLOK', 'SAÇAK', 'BORDÜR', 'OVAL'];
+  for (const b of blacklisted) {
+    if (upper.includes(b)) return false;
+  }
+  if (/^\d+$/.test(upper)) return false;
+  return true;
+}
+
+function cleanLocalCariler() {
+  try {
+    const list = getLocalCariler();
+    const cleaned = list.filter(c => isLikelyCari(c));
+    if (cleaned.length !== list.length) {
+      localStorage.setItem(LOCAL_CARILER_KEY, JSON.stringify(cleaned));
+    }
+  } catch(e) {}
+}
+
+function getLocalCariler() {
+  try {
+    const raw = localStorage.getItem(LOCAL_CARILER_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.warn('[Yerel Cari] Okuma hatası:', e);
+    return [];
+  }
+}
+
+function saveLocalCari(name) {
+  if (!name || !isLikelyCari(name)) return;
+  const key = name.trim().toUpperCase();
+  if (!key) return;
+  try {
+    const list = getLocalCariler();
+    if (!list.includes(key)) {
+      list.push(key);
+      list.sort((a, b) => a.localeCompare(b, 'tr'));
+      localStorage.setItem(LOCAL_CARILER_KEY, JSON.stringify(list));
+      loadLocalCariSuggestions();
+    }
+  } catch (e) {
+    console.warn('[Yerel Cari] Kayıt hatası:', e);
+  }
+}
+
+function saveLocalCarilerBatch(names) {
+  if (!names || !names.length) return;
+  try {
+    const list = new Set(getLocalCariler());
+    let added = false;
+    for (const name of names) {
+      if (!isLikelyCari(name)) continue;
+      const key = (name || '').trim().toUpperCase();
+      if (key && !list.has(key)) {
+        list.add(key);
+        added = true;
+      }
+    }
+    if (added) {
+      const sorted = Array.from(list).sort((a, b) => a.localeCompare(b, 'tr'));
+      localStorage.setItem(LOCAL_CARILER_KEY, JSON.stringify(sorted));
+      loadLocalCariSuggestions();
+    }
+  } catch (e) {
+    console.warn('[Yerel Cari] Toplu kayıt hatası:', e);
+  }
+}
+
+function loadLocalCariSuggestions() {
+  cleanLocalCariler();
+  const cariDL = $('cariDatalist');
+  if (!cariDL) return;
+  const list = getLocalCariler();
+  cariDL.innerHTML = list.map(c => `<option value="${esc(c)}"></option>`).join('');
+}
+
+// Koleksiyonlar yoksa sentinel belge ile oluştur (CariList hariç)
 async function fbEnsureCollections() {
   if (!_db) return;
   try {
     const collections = [
-      { name: 'CariList',    sentinel: { name: '_init', _sentinel: true, createdAt: firebase.firestore.FieldValue.serverTimestamp() } },
       { name: 'MalzemeList', sentinel: { name: '_init', _sentinel: true, createdAt: firebase.firestore.FieldValue.serverTimestamp() } },
       { name: 'IslemList',   sentinel: { name: '_init', _sentinel: true, createdAt: firebase.firestore.FieldValue.serverTimestamp() } },
     ];
@@ -1097,11 +1184,8 @@ async function fbEnsureCollections() {
 }
 
 async function fbSaveCari(name) {
-  if (!_db || !name) return;
-  const key = name.trim().toUpperCase();
-  try {
-    await _db.collection('CariList').doc(key).set({ name: key, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
-  } catch (e) { console.warn('[Firebase] CariList kayıt hatası:', e); }
+  // Artık Firebase yerine yerel depolamaya kaydedilir
+  saveLocalCari(name);
 }
 
 async function fbSaveMalz(name) {
@@ -1121,12 +1205,11 @@ async function fbSaveIslem(name) {
 }
 
 async function fbLoadSuggestions() {
+  // 1. Yerel carileri yükle
+  loadLocalCariSuggestions();
+
   if (!_db) return;
   try {
-    const cariSnap = await _db.collection('CariList').orderBy('name').get();
-    const cariDL = $('cariDatalist');
-    if (cariDL) cariDL.innerHTML = cariSnap.docs.map(d => `<option value="${d.data().name}"></option>`).join('');
-
     const malzSnap = await _db.collection('MalzemeList').orderBy('name').get();
     const malzDL = $('malzDatalist');
     if (malzDL) malzDL.innerHTML = malzSnap.docs.map(d => `<option value="${d.data().name}"></option>`).join('');
@@ -1139,7 +1222,7 @@ async function fbLoadSuggestions() {
     if (islemDL) islemDL.innerHTML = islemNames.map(n => `<option value="${esc(n)}"></option>`).join('');
     S.islemKeywords = islemNames;
 
-    console.log(`[Firebase] ${cariSnap.size} cari, ${malzSnap.size} malzeme, ${islemNames.length} işlem önerisi yüklendi.`);
+    console.log(`[Firebase] ${malzSnap.size} malzeme, ${islemNames.length} işlem önerisi yüklendi. (Cariler yerel diskten alındı)`);
     if (window._etiketAppStarted && S.rows.length) {
       reparse().catch(() => {});
     }
@@ -1151,7 +1234,6 @@ window.EtiketFirebase = {
   get db() { return _db; },
   docKey(name) { return (name || '').trim().toUpperCase(); },
   collections: [
-    { id: 'CariList', label: 'Cari listesi', singular: 'cari', addPlaceholder: 'Yeni cari ünvan...' },
     { id: 'MalzemeList', label: 'Malzeme listesi', singular: 'malzeme', addPlaceholder: 'Yeni malzeme adı...' },
     { id: 'IslemList', label: 'İşlem listesi', singular: 'işlem', addPlaceholder: 'Yeni işlem adı...' },
   ],
@@ -1160,9 +1242,14 @@ window.EtiketFirebase = {
   getIslemKeywords() { return S.islemKeywords || []; },
 };
 
-// Firebase'i DOM yüklendiğinde başlat
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', fbInit);
-} else {
+function initStartup() {
+  loadLocalCariSuggestions();
   fbInit();
+}
+
+// Firebase ve yerel verileri DOM yüklendiğinde başlat
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initStartup);
+} else {
+  initStartup();
 }

@@ -368,15 +368,11 @@ fn generate_pplb(labels: Vec<ParsedLabel>, settings_data: LabelSettings) -> Resu
 }
 
 pub(crate) fn chrono_date() -> String {
-    let now = std::time::SystemTime::now();
-    let duration = now
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = duration.as_secs() as i64;
-    let days = secs / 86400;
-    // Simple date calculation
-    let (y, m, d) = days_to_date(days + 719468);
-    format!("{:02}.{:02}.{}", d, m, y)
+    chrono::Local::now().format("%d.%m.%Y %H:%M").to_string()
+}
+
+pub(crate) fn chrono_date_filename() -> String {
+    chrono::Local::now().format("%d.%m.%Y").to_string()
 }
 
 fn days_to_date(days: i64) -> (i64, i64, i64) {
@@ -405,7 +401,7 @@ async fn open_html_in_browser(html_content: String, sheet_name: String) -> Resul
     std::fs::create_dir_all(&etiket_dir).map_err(|e| format!("Klasör oluşturulamadı: {}", e))?;
 
     // PDF filename: date-sheetname.pdf
-    let date_str = chrono_date().replace('.', ".");
+    let date_str = chrono_date_filename();
     let clean_sheet = sheet_name
         .replace(
             |c: char| !c.is_alphanumeric() && c != ' ' && c != '-' && c != '_',

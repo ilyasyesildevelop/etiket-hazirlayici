@@ -1,0 +1,38 @@
+{
+  "width_mm": 80.0,
+  "height_mm": 50.0,
+  "field_widths": {
+    "cari_unvan": 20.0,
+    "malz_aciklama": 35.0,
+    "ebat": 10.0,
+    "adet_metrekare": 6.0,
+    "islem": 10.0,
+    "musteri_adi": 18.0,
+    "diger_aciklamalar": 20.0
+  },
+  "field_font_sizes": {
+    "cari_unvan": 25.0,
+    "malz_aciklama": 32.0,
+    "ebat": 30.0,
+    "adet_metrekare": 16.0,
+    "islem": 24.0,
+    "musteri_adi": 25.0,
+    "diger_aciklamalar": 22.0
+  },
+  "global_font_family": "Tahoma",
+  "global_color": "#000000",
+  "satir_rules": {
+    "split_char": "/",
+    "move_long_text": true,
+    "max_chars": 80
+  },
+  "printer_name": "",
+  "copies": 1,
+  "alignment": "center",
+  "header_text": "İyi günlerde kullanmanız dileğiyle",
+  "cari_max_chars": 45,
+  "show_date": true,
+  "show_page_number": true,
+  "label_margin": 1.5,
+  "sequence_font_size": 7.0
+}
