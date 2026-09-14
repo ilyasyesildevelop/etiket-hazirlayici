@@ -9,6 +9,8 @@ pub struct RawRow {
     pub bekleyen_siparis: String,
     pub dokumanizleme_no: String,
     pub sevkiyat_adi: String,
+    #[serde(default)]
+    pub is_selected: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +41,7 @@ pub struct ColumnMapping {
     pub bekleyen_siparis_col: Option<usize>,
     pub dokumanizleme_no_col: Option<usize>,
     pub sevkiyat_adi_col: Option<usize>,
+    pub secim_col: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

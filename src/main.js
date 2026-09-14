@@ -480,12 +480,26 @@ async function loadSheet() {
     const data = await invoke('load_excel', { filePath: path, sheetName: sheet });
     S.rows = data.rows; 
     S.manualRows = []; 
-    S.sel = new Set(data.rows.map((_, i) => i)); 
+    if (data.has_selection_col) {
+      S.sel = new Set();
+      data.rows.forEach((r, i) => {
+        if (r.is_selected) S.sel.add(i);
+      });
+      const firstSel = data.rows.findIndex(r => r.is_selected);
+      S.curIdx = firstSel !== -1 ? firstSel : 0;
+    } else {
+      S.sel = new Set(data.rows.map((_, i) => i)); 
+      S.curIdx = 0;
+    }
     S.deletedIndices = new Set();
     S.page = 0;
     await reparse();
-    renderTable(); S.curIdx = 0; renderPreview();
-    setStatus('success', `${data.total} kayıt yüklendi.`);
+    renderTable(); renderPreview();
+    if (data.has_selection_col) {
+      setStatus('success', `${data.total} kayıt yüklendi. (Excel'den ${S.sel.size} etiket seçildi)`);
+    } else {
+      setStatus('success', `${data.total} kayıt yüklendi.`);
+    }
     $('statusRowCount').textContent = `Kayıt: ${data.total}`;
     
     // Excel verilerinden carileri yerel hafızaya kaydet, malzemeleri Firebase'e gönder
@@ -697,6 +711,9 @@ function highlightRow() {
 function updSel() {
   $('selectionInfo').textContent = `Seçili: ${S.sel.size} / ${S.rows.length}`;
   $('statusSelected').textContent = `Seçili: ${S.sel.size}`;
+  if ($('selectAll')) {
+    $('selectAll').checked = S.rows.length > 0 && S.sel.size === S.rows.length;
+  }
   const sl = getSelLabels();
   $('labelNavInfo').textContent = sl.length ? `${Math.min(S.curIdx+1, sl.length)} / ${sl.length}` : '0 / 0';
 }

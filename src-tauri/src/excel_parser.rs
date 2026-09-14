@@ -40,6 +40,7 @@ pub fn parse_excel(
         let bekleyen = get_cell_value(row, mapping.bekleyen_siparis_col);
         let dokuman = get_cell_value(row, mapping.dokumanizleme_no_col);
         let sevkiyat = get_cell_value(row, mapping.sevkiyat_adi_col);
+        let is_selected = is_cell_selected(row, mapping.secim_col);
 
         if cari.is_empty() && malz.is_empty() && satir.is_empty() {
             continue;
@@ -53,6 +54,7 @@ pub fn parse_excel(
             bekleyen_siparis: bekleyen,
             dokumanizleme_no: dokuman,
             sevkiyat_adi: sevkiyat,
+            is_selected,
         });
     }
 
@@ -68,12 +70,16 @@ fn find_columns(range: &calamine::Range<Data>) -> Result<(usize, ColumnMapping),
             bekleyen_siparis_col: None,
             dokumanizleme_no_col: None,
             sevkiyat_adi_col: None,
+            secim_col: None,
         };
 
         for (col_idx, cell) in row.iter().enumerate() {
-            let val = normalize_header(&cell.to_string());
+            let raw_str = cell.to_string().trim().to_string();
+            let val = normalize_header(&raw_str);
 
-            if val.contains("CARI") || val.contains("FIRMA") {
+            if raw_str == "." || val == "SEC" || val == "SECIM" || raw_str == "✓" || raw_str == "✔" {
+                mapping.secim_col = Some(col_idx);
+            } else if val.contains("CARI") || val.contains("FIRMA") {
                 mapping.cari_unvan_col = Some(col_idx);
             } else if val.contains("MALZ") || val.contains("URUN") {
                 mapping.malz_aciklama_col = Some(col_idx);
@@ -137,3 +143,28 @@ fn get_cell_value(row: &[Data], col: Option<usize>) -> String {
         _ => String::new(),
     }
 }
+
+fn is_cell_selected(row: &[Data], col: Option<usize>) -> bool {
+    match col {
+        Some(idx) if idx < row.len() => match &row[idx] {
+            Data::Bool(b) => *b,
+            Data::Int(i) => *i == 1,
+            Data::Float(f) => (*f - 1.0).abs() < f64::EPSILON,
+            Data::String(s) => {
+                let lower = s.trim().to_lowercase();
+                lower == "true"
+                    || lower == "doğru"
+                    || lower == "dogru"
+                    || lower == "1"
+                    || lower == "evet"
+                    || lower == "x"
+                    || lower == "v"
+                    || lower == "✓"
+                    || lower == "✔"
+            }
+            _ => false,
+        },
+        _ => true,
+    }
+}
+

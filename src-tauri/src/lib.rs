@@ -158,10 +158,12 @@ fn load_excel(
     recent.insert(0, file_path);
     recent.truncate(10);
     settings::save_recent_files(&recent).ok();
+    let has_selection_col = mapping.secim_col.is_some();
 
     Ok(serde_json::json!({
         "rows": rows,
         "mapping": mapping,
+        "has_selection_col": has_selection_col,
         "total": rows.len(),
     }))
 }
@@ -375,18 +377,6 @@ pub(crate) fn chrono_date_filename() -> String {
     chrono::Local::now().format("%d.%m.%Y").to_string()
 }
 
-fn days_to_date(days: i64) -> (i64, i64, i64) {
-    let era = if days >= 0 { days } else { days - 146096 } / 146097;
-    let doe = days - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    (y, m, d)
-}
 
 #[tauri::command]
 async fn open_html_in_browser(html_content: String, sheet_name: String) -> Result<String, String> {
