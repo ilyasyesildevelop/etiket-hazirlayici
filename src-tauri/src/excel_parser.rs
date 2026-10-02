@@ -38,6 +38,7 @@ pub fn parse_excel(
         let malz = get_cell_value(row, mapping.malz_aciklama_col);
         let satir = get_cell_value(row, mapping.satir_aciklama_col);
         let bekleyen = get_cell_value(row, mapping.bekleyen_siparis_col);
+        let siparis_tarihi = get_date_value(row, mapping.siparis_tarihi_col);
         let dokuman = get_cell_value(row, mapping.dokumanizleme_no_col);
         let sevkiyat = get_cell_value(row, mapping.sevkiyat_adi_col);
         let is_selected = is_cell_selected(row, mapping.secim_col);
@@ -52,6 +53,7 @@ pub fn parse_excel(
             malz_aciklama: malz,
             satir_aciklama: satir,
             bekleyen_siparis: bekleyen,
+            siparis_tarihi,
             dokumanizleme_no: dokuman,
             sevkiyat_adi: sevkiyat,
             is_selected,
@@ -68,6 +70,7 @@ fn find_columns(range: &calamine::Range<Data>) -> Result<(usize, ColumnMapping),
             malz_aciklama_col: None,
             satir_aciklama_col: None,
             bekleyen_siparis_col: None,
+            siparis_tarihi_col: None,
             dokumanizleme_no_col: None,
             sevkiyat_adi_col: None,
             secim_col: None,
@@ -85,6 +88,8 @@ fn find_columns(range: &calamine::Range<Data>) -> Result<(usize, ColumnMapping),
                 mapping.malz_aciklama_col = Some(col_idx);
             } else if val.contains("SATIR") || val.contains("ACIKLAMA") || val.contains("ACK") {
                 mapping.satir_aciklama_col = Some(col_idx);
+            } else if val.contains("SIPTARIH") || val.contains("SIPARISTARIH") {
+                mapping.siparis_tarihi_col = Some(col_idx);
             } else if val.contains("SIPARIS") || val == "SIP" {
                 mapping.bekleyen_siparis_col = Some(col_idx);
             } else if val.contains("MUSTERI") || val == "MS" {
@@ -140,6 +145,23 @@ fn get_cell_value(row: &[Data], col: Option<usize>) -> String {
             Data::Int(i) => format!("{}", i),
             other => other.to_string().trim().to_string(),
         },
+        _ => String::new(),
+    }
+}
+
+fn get_date_value(row: &[Data], col: Option<usize>) -> String {
+    match col.and_then(|idx| row.get(idx)) {
+        Some(Data::DateTime(value)) => {
+            let serial = value.as_f64().floor() as i64;
+            chrono::NaiveDate::from_ymd_opt(1899, 12, 30)
+                .and_then(|date| date.and_hms_opt(0, 0, 0))
+                .and_then(|date| date.checked_add_signed(chrono::Duration::days(serial)))
+                .map(|date| date.format("%d.%m.%Y").to_string())
+                .unwrap_or_default()
+        }
+        Some(Data::String(value)) => value.trim().to_string(),
+        Some(Data::Int(value)) => value.to_string(),
+        Some(Data::Float(value)) => format!("{}", value),
         _ => String::new(),
     }
 }

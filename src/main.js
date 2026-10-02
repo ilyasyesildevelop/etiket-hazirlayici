@@ -602,6 +602,7 @@ async function saveManualLabel() {
     musteri_adi:        musteri,
     diger_aciklamalar:  diger,
     bekleyen_siparis:   '',
+    siparis_tarihi:     '',
     print_count:        kopya,
   };
 
@@ -756,13 +757,18 @@ function renderPreview() {
   const hdrFs = S.headerFontSize || 6;
   const HEADER_H = hdrFs + 2;
 
-  // Header: 3 fixed-width sections (left/center/right)
+  // Header: order date left, configured title center, current date/time right
   ctx.fillStyle = '#333'; ctx.font = `${hdrFs}px ${font}`; ctx.textBaseline = 'top';
-  const hdrW = W - M * 2;
-  const hdrThird = hdrW / 3;
-  if (S.settings.show_page_number) { ctx.textAlign = 'center'; ctx.fillText(`— ${idx+1} —`, M + hdrThird / 2, M + 1); }
-  ctx.textAlign = 'center'; ctx.fillText(S.settings.header_text, M + hdrThird + hdrThird / 2, M + 1);
-  if (S.settings.show_date) { ctx.textAlign = 'center'; ctx.fillText(`— ${todayStr()} —`, M + hdrThird * 2 + hdrThird / 2, M + 1); }
+  if (L.siparis_tarihi) {
+    ctx.textAlign = 'left';
+    ctx.fillText(`S.T.: ${L.siparis_tarihi}`, M + 1, M + 1, W * 0.34);
+  }
+  ctx.textAlign = 'center';
+  ctx.fillText(S.settings.header_text, W / 2, M + 1, W * 0.32);
+  if (S.settings.show_date) {
+    ctx.textAlign = 'right';
+    ctx.fillText(todayStr().replace(' ', ' / '), W - M - 1, M + 1, W * 0.36);
+  }
   // Header separator
   ctx.strokeStyle = '#666'; ctx.lineWidth = 0.5;
   ctx.beginPath(); ctx.moveTo(M, M + HEADER_H); ctx.lineTo(W - M, M + HEADER_H); ctx.stroke();
@@ -852,6 +858,10 @@ function renderPreview() {
   ctx.save();
   ctx.fillStyle = '#000'; ctx.font = `bold ${seqFs}px Inter`; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
   ctx.fillText(`1/${count}`, W - M - 8, H - M - 8);
+  if (S.settings.show_page_number) {
+    ctx.textAlign = 'left';
+    ctx.fillText(`— ${idx + 1} —`, M + 8, H - M - 8);
+  }
   ctx.restore();
 
   updSel();
@@ -947,7 +957,9 @@ async function generatePDF() {
   let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etiketler</title><style>@page{size:${w}mm ${h}mm;margin:0}body{margin:0;font-family:${S.settings.global_font_family}}
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .label{width:${w}mm;height:${h}mm;page-break-after:always;position:relative;box-sizing:border-box;overflow:hidden;padding:${mg}mm;background:#FFF;}
-  .header{height:3mm;font-size:7pt;display:flex;justify-content:space-between;align-items:center;border-bottom:0.2mm solid #666;margin-bottom:0.5mm}
+  .header{height:3mm;font-size:7pt;display:flex;justify-content:space-between;align-items:center;border-bottom:0.2mm solid #666;margin-bottom:0.5mm;position:relative}
+  .header span{white-space:nowrap;overflow:hidden;text-overflow:clip}.header .title{position:absolute;left:34%;width:32%;text-align:center}.header .order-date{max-width:34%;font-size:5pt}.header .current-date{max-width:36%;text-align:right}
+  .page-number,.sequence{position:absolute;bottom:1.5mm;font-size:${seqFs}pt;font-weight:bold;color:#000}.page-number{left:${mg + 2}mm}.sequence{right:${mg + 2}mm}
   .body{display:flex;height:calc(100% - 4.5mm)}  .col{border-right:0.2mm solid #666;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:0.5mm}
   .col:last-child{border-right:none}
   .col span{writing-mode:vertical-rl;text-orientation:mixed;transform:rotate(180deg);text-align:center;word-break:break-word;line-height:1.2}
@@ -972,13 +984,14 @@ async function generatePDF() {
       [L.musteri_adi, fw.musteri_adi, fs.musteri_adi, false],
       [digerText, fw.diger_aciklamalar, digerSz, false],
     ];
-    html += `<div class="label"><div class="header"><span>${S.settings.show_page_number?'— '+(i+1)+' —':''}</span><span>${S.settings.header_text}</span><span>${S.settings.show_date?'— '+todayStr()+' —':''}</span></div><div class="body">`;
+    html += `<div class="label"><div class="header"><span class="order-date">${L.siparis_tarihi ? `S.T.: ${esc(L.siparis_tarihi)}` : ''}</span><span class="title">${esc(S.settings.header_text)}</span><span class="current-date">${S.settings.show_date ? esc(todayStr().replace(' ', ' / ')) : ''}</span></div><div class="body">`;
     flds.forEach(([txt,pct,sz,bold]) => {
       const wPct = (pct/total*100).toFixed(1);
       html += `<div class="col" style="width:${wPct}%"><span style="font-size:${sz*0.4}pt;${bold?'font-weight:bold':''}">${esc(txt||'')}</span></div>`;
     });
     // Add sequence number at bottom right
-    html += `<span style="position:absolute; bottom:1.5mm; right:3mm; font-size:${seqFs}pt; font-weight:bold; color:#000;">${L.print_idx}/${L.print_total}</span>`;
+    if (S.settings.show_page_number) html += `<span class="page-number">— ${i + 1} —</span>`;
+    html += `<span class="sequence">${L.print_idx}/${L.print_total}</span>`;
     html += '</div></div>';
   });
   html += '</body></html>';

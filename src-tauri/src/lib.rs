@@ -218,6 +218,7 @@ fn parse_all_labels(
                 musteri_adi: parsed.musteri_adi,
                 diger_aciklamalar: parsed.diger_aciklamalar,
                 bekleyen_siparis: row.bekleyen_siparis.clone(),
+                siparis_tarihi: row.siparis_tarihi.clone(),
                 print_count: parsed.print_count,
             }
         })
@@ -407,6 +408,15 @@ async fn open_html_in_browser(html_content: String, sheet_name: String) -> Resul
     let pdf_name = format!("{}-{}.pdf", date_str, sheet_part);
     let pdf_file = etiket_dir.join(&pdf_name);
 
+    // Handle locked / open PDF files by trying alternative names
+    let mut target_pdf = pdf_file.clone();
+    let mut counter = 1;
+    while target_pdf.exists() && std::fs::OpenOptions::new().write(true).open(&target_pdf).is_err() {
+        let alt_name = format!("{}-{}-{}.pdf", date_str, sheet_part, counter);
+        target_pdf = etiket_dir.join(&alt_name);
+        counter += 1;
+    }
+
     std::fs::write(&html_file, &html_content)
         .map_err(|e| format!("HTML dosyası yazılamadı: {}", e))?;
 
@@ -424,25 +434,44 @@ async fn open_html_in_browser(html_content: String, sheet_name: String) -> Resul
         .ok_or("Edge veya Chrome bulunamadı.")?;
 
     let html_path = html_file.to_string_lossy().to_string();
-    let pdf_path = pdf_file.to_string_lossy().to_string();
+    let pdf_path = target_pdf.to_string_lossy().to_string();
+    let user_data_dir = temp_dir.join("etiket_edge_profile");
+    std::fs::create_dir_all(&user_data_dir).ok();
 
+    // 1. Try modern headless=new with isolated user data directory
     let output = Command::new(browser)
         .args([
-            "--headless",
+            "--headless=new",
+            &format!("--user-data-dir={}", user_data_dir.to_string_lossy()),
             "--disable-gpu",
             "--no-sandbox",
             &format!("--print-to-pdf={}", pdf_path),
             "--print-to-pdf-no-header",
             &format!("file:///{}", html_path.replace('\\', "/")),
         ])
-        .output()
-        .map_err(|e| format!("PDF oluşturulamadı: {}", e))?;
+        .output();
 
-    if !pdf_file.exists() {
-        return Err(format!(
-            "PDF dosyası oluşturulamadı: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
+    // 2. If target_pdf not created, try legacy --headless fallback
+    if !target_pdf.exists() {
+        let _ = Command::new(browser)
+            .args([
+                "--headless",
+                &format!("--user-data-dir={}", user_data_dir.to_string_lossy()),
+                "--disable-gpu",
+                "--no-sandbox",
+                &format!("--print-to-pdf={}", pdf_path),
+                "--print-to-pdf-no-header",
+                &format!("file:///{}", html_path.replace('\\', "/")),
+            ])
+            .output();
+    }
+
+    if !target_pdf.exists() {
+        let err_msg = match output {
+            Ok(out) => String::from_utf8_lossy(&out.stderr).to_string(),
+            Err(e) => e.to_string(),
+        };
+        return Err(format!("PDF dosyası oluşturulamadı: {}", err_msg));
     }
 
     // Open the PDF

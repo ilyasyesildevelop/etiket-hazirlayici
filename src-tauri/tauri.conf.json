@@ -27,9 +27,9 @@
     "active": true,
     "targets": ["nsis"],
     "publisher": "Green Labs Development Technology, Inc",
-    "copyright": "Copyright © 2026 İlyas Yeşil and Green Labs Development Technology, Inc. All rights reserved.",
+    "copyright": "Copyright © 2026 İlyas Yeşil and Green Labs Technology & Development, Inc. All rights reserved.",
     "shortDescription": "Etiket Hazırlayıcı",
-    "longDescription": "Etiket Hazırlayıcı - Developed by İlyas Yeşil for Green Labs Development Technology, Inc.",
+    "longDescription": "Etiket Hazırlayıcı - Developed by İlyas Yeşil for Green Labs Technology & Development, Inc.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

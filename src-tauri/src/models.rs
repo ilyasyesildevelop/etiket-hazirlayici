@@ -7,6 +7,8 @@ pub struct RawRow {
     pub malz_aciklama: String,
     pub satir_aciklama: String,
     pub bekleyen_siparis: String,
+    #[serde(default)]
+    pub siparis_tarihi: String,
     pub dokumanizleme_no: String,
     pub sevkiyat_adi: String,
     #[serde(default)]
@@ -24,6 +26,8 @@ pub struct ParsedLabel {
     pub musteri_adi: String,
     pub diger_aciklamalar: String,
     pub bekleyen_siparis: String,
+    #[serde(default)]
+    pub siparis_tarihi: String,
     pub print_count: usize,
 }
 
@@ -39,6 +43,7 @@ pub struct ColumnMapping {
     pub malz_aciklama_col: Option<usize>,
     pub satir_aciklama_col: Option<usize>,
     pub bekleyen_siparis_col: Option<usize>,
+    pub siparis_tarihi_col: Option<usize>,
     pub dokumanizleme_no_col: Option<usize>,
     pub sevkiyat_adi_col: Option<usize>,
     pub secim_col: Option<usize>,

@@ -66,18 +66,15 @@ fn append_label(
     let body_h = (body_bottom - body_top).max(40);
     let inner_w = label_w - margin * 2;
 
-    // --- Üst şerit (başlık, tarih, sayfa) — yatay, rotation 0 ---
-    if settings.show_page_number {
-        let page = format!("- {} -", idx + 1);
-        let x = margin + inner_w / 6;
-        pplb_text(out, x, margin + 4, 0, 2, &page);
+    // --- Köşe bilgileri ve orta başlık — yatay, rotation 0 ---
+    if !label.siparis_tarihi.is_empty() {
+        pplb_text(out, margin + 4, margin + 4, 0, 1, &format!("S.T.: {}", label.siparis_tarihi));
     }
     let header_x = margin + inner_w / 2;
     pplb_text(out, header_x, margin + 4, 0, 2, &settings.header_text);
     if settings.show_date {
-        let date = super::chrono_date();
-        let x = margin + (inner_w * 5) / 6;
-        pplb_text(out, x, margin + 4, 0, 2, &format!("- {} -", date));
+        let date = super::chrono_date().replace(' ', " / ");
+        pplb_text(out, label_w - margin - 4, margin + 4, 0, 2, &date);
     }
 
     // --- Gövde sütunları — dikey metin (rotation 1), PDF ile aynı ---
@@ -131,6 +128,10 @@ fn append_label(
         seq_font,
         &seq,
     );
+    if settings.show_page_number {
+        let page = format!("- {} -", idx + 1);
+        pplb_text(out, margin + 4, label_h - margin - 8, 0, 1, &page);
+    }
 }
 
 fn pt_to_pplb_font(pt: f64) -> i32 {
@@ -200,6 +201,7 @@ mod tests {
             musteri_adi: String::new(),
             diger_aciklamalar: String::new(),
             bekleyen_siparis: String::new(),
+            siparis_tarihi: String::new(),
             print_count: 1,
         }];
         let cmds = build_commands(&labels, &sample_settings());
@@ -221,6 +223,7 @@ mod tests {
             musteri_adi: String::new(),
             diger_aciklamalar: String::new(),
             bekleyen_siparis: String::new(),
+            siparis_tarihi: String::new(),
             print_count: 1,
         }];
         let cmds = build_commands(&labels, &s);

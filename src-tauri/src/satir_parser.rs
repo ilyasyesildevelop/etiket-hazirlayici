@@ -150,14 +150,11 @@ fn parse_new_structured_format(
     };
 
     // 3. ADET
-    let mut remaining = satir.to_string();
-    let adet = extract_adet(&mut remaining);
-    let (adet_display, print_count) = if !adet.is_empty() {
-        let count = regex::Regex::new(r"(\d+)").unwrap()
-            .captures(&adet)
-            .and_then(|c| c[1].parse::<usize>().ok())
-            .unwrap_or(1);
-        (adet, count)
+    static ADET_RE: OnceLock<Regex> = OnceLock::new();
+    let adet_re = ADET_RE.get_or_init(|| Regex::new(r"(?i)(\d+)\s*adet").unwrap());
+    let (adet_display, print_count) = if let Some(cap) = adet_re.captures(satir) {
+        let count = cap[1].parse::<usize>().unwrap_or(1);
+        (format!("{} ADET", count), if count > 0 { count } else { 1 })
     } else {
         ("1 ADET".to_string(), 1)
     };
@@ -206,6 +203,7 @@ fn parse_new_structured_format(
     };
 
     // 5. MÜŞTERİ ADI
+    let mut remaining = satir.to_string();
     let mut musteri_adi = extract_musteri(&mut remaining, dokumanizleme, cari);
     if musteri_adi.is_empty() {
         let parts: Vec<&str> = satir.split('|').map(|p| p.trim()).collect();
