@@ -109,6 +109,146 @@ fn match_islem_keywords(remaining: &mut String, text: &str, keywords: &[String])
     String::new()
 }
 
+fn is_new_structured_format(satir: &str) -> bool {
+    static NEW_FMT_RE: OnceLock<Regex> = OnceLock::new();
+    let re = NEW_FMT_RE.get_or_init(|| Regex::new(r"(?i)\ben\s*:\s*\d+").unwrap());
+    re.is_match(satir)
+}
+
+fn parse_new_structured_format(
+    satir: &str,
+    malz: &str,
+    bekleyen: &str,
+    dokumanizleme: &str,
+    cari: &str,
+    rules: &SatirRules,
+) -> ParsedSatir {
+    let is_enrulo = malz.to_uppercase().contains("ENRULO");
+
+    // 1. EBAT (En x Uzunluk/Boy)
+    static EN_RE: OnceLock<Regex> = OnceLock::new();
+    static BOY_RE: OnceLock<Regex> = OnceLock::new();
+    let en_re = EN_RE.get_or_init(|| Regex::new(r"(?i)\ben\s*:\s*(\d+)").unwrap());
+    let boy_re = BOY_RE.get_or_init(|| Regex::new(r"(?i)\b(?:uzunluk|boy)\s*:\s*(\d+)").unwrap());
+
+    let en_val = en_re.captures(satir).map(|c| c[1].to_string());
+    let boy_val = boy_re.captures(satir).map(|c| c[1].to_string());
+
+    let ebat = match (en_val, boy_val) {
+        (Some(en), Some(boy)) => format!("{}*{}", en, boy),
+        _ => String::new(),
+    };
+
+    // 2. METREKARE
+    static M2_RE: OnceLock<Regex> = OnceLock::new();
+    let m2_re = M2_RE.get_or_init(|| Regex::new(r"(?i)\(\s*([\d.,]+)\s*m[²2]?\s*\)").unwrap());
+    let metrekare = if let Some(cap) = m2_re.captures(satir) {
+        let val = cap[1].replace('.', ",");
+        format!("{} m²", val)
+    } else {
+        format_metrekare(bekleyen)
+    };
+
+    // 3. ADET
+    let mut remaining = satir.to_string();
+    let adet = extract_adet(&mut remaining);
+    let (adet_display, print_count) = if !adet.is_empty() {
+        let count = regex::Regex::new(r"(\d+)").unwrap()
+            .captures(&adet)
+            .and_then(|c| c[1].parse::<usize>().ok())
+            .unwrap_or(1);
+        (adet, count)
+    } else {
+        ("1 ADET".to_string(), 1)
+    };
+
+    // 4. İŞLEM (Şekil + Kenar)
+    static SEKIL_RE: OnceLock<Regex> = OnceLock::new();
+    static KENAR_RE: OnceLock<Regex> = OnceLock::new();
+    let sekil_re = SEKIL_RE.get_or_init(|| Regex::new(r"(?i)\b(?:şekil|sekil)\s*:\s*([a-zA-ZçÇğĞıİöÖşŞüÜ]+)").unwrap());
+    let kenar_re = KENAR_RE.get_or_init(|| Regex::new(r"(?i)\bkenar\s*:\s*([a-zA-ZçÇğĞıİöÖşŞüÜ]+)").unwrap());
+
+    let sekil = sekil_re.captures(satir).map(|c| c[1].to_uppercase()).unwrap_or_default();
+    let kenar = kenar_re.captures(satir).map(|c| c[1].to_uppercase()).unwrap_or_default();
+
+    let islem = if sekil.contains("OVAL") {
+        if kenar.contains("SAÇAK") || kenar.contains("SACAK") {
+            "OVAL SAÇAK".to_string()
+        } else if kenar.contains("OVERLOK") {
+            "OVAL OVERLOK".to_string()
+        } else if kenar.contains("KATLAMA") {
+            "OVAL KATLAMA".to_string()
+        } else {
+            "OVAL".to_string()
+        }
+    } else if sekil.contains("YUVARLAK") || sekil.contains("DAIRE") {
+        if kenar.contains("OVERLOK") {
+            "YUVARLAK OVERLOK".to_string()
+        } else if kenar.contains("SAÇAK") || kenar.contains("SACAK") {
+            "YUVARLAK SAÇAK".to_string()
+        } else if kenar.contains("KATLAMA") {
+            "YUVARLAK KATLAMA".to_string()
+        } else {
+            "YUVARLAK".to_string()
+        }
+    } else {
+        if kenar.contains("KATLAMA") {
+            "KATLAMA".to_string()
+        } else if kenar.contains("SAÇAK") || kenar.contains("SACAK") {
+            "SAÇAKLI".to_string()
+        } else if kenar.contains("OVERLOK") {
+            "OVERLOK".to_string()
+        } else if !kenar.is_empty() {
+            standardize_islem(&kenar)
+        } else {
+            String::new()
+        }
+    };
+
+    // 5. MÜŞTERİ ADI
+    let mut musteri_adi = extract_musteri(&mut remaining, dokumanizleme, cari);
+    if musteri_adi.is_empty() {
+        let parts: Vec<&str> = satir.split('|').map(|p| p.trim()).collect();
+        if let Some(first) = parts.first() {
+            let not_en = !en_re.is_match(first);
+            if not_en && first.len() >= 3 {
+                let first_up = first.to_uppercase();
+                let cari_up = cari.to_uppercase();
+                let is_same_as_cari = cari_up.contains(&first_up) || first_up.contains(&cari_up);
+                let is_op = ISLEM_KEYWORDS.iter().any(|&k| first_up == k.to_uppercase());
+                if !is_same_as_cari && !is_op {
+                    musteri_adi = format_musteri_label(first);
+                }
+            }
+        }
+    }
+
+    // 6. DİĞER AÇIKLAMALAR / NOT
+    static NOT_RE: OnceLock<Regex> = OnceLock::new();
+    let not_re = NOT_RE.get_or_init(|| Regex::new(r"(?i)\bnot\s*:\s*([^|]+)").unwrap());
+    let mut diger_aciklamalar = not_re.captures(satir)
+        .map(|c| c[1].trim().to_string())
+        .unwrap_or_default();
+
+    if rules.move_long_text && diger_aciklamalar.len() > rules.max_chars {
+        let pos = diger_aciklamalar[..rules.max_chars]
+            .rfind(' ')
+            .unwrap_or(rules.max_chars);
+        diger_aciklamalar = diger_aciklamalar[..pos].trim().to_string();
+    }
+
+    ParsedSatir {
+        ebat,
+        adet: adet_display,
+        metrekare,
+        islem,
+        musteri_adi,
+        diger_aciklamalar,
+        is_enrulo,
+        print_count,
+    }
+}
+
 pub fn parse_satir_aciklama(
     satir: &str,
     malz: &str,
@@ -121,6 +261,12 @@ pub fn parse_satir_aciklama(
     let satir = satir.trim();
     let malz = malz.trim();
     let is_enrulo = malz.to_uppercase().contains("ENRULO");
+
+    // Yeni yapılandırılmış format kontrolü ("En: ... | Boy/Uzunluk: ...")
+    if is_new_structured_format(satir) {
+        return parse_new_structured_format(satir, malz, bekleyen, dokumanizleme, cari, rules);
+    }
+
     let mut remaining = satir.to_string();
 
     // 1. Extract EBAT
