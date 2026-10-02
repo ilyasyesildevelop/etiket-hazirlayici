@@ -134,7 +134,7 @@ fn parse_new_structured_format(
     let en_val = en_re.captures(satir).map(|c| c[1].to_string());
     let boy_val = boy_re.captures(satir).map(|c| c[1].to_string());
 
-    let ebat = match (en_val, boy_val) {
+    let ebat = match (&en_val, &boy_val) {
         (Some(en), Some(boy)) => format!("{}*{}", en, boy),
         _ => String::new(),
     };
@@ -142,22 +142,62 @@ fn parse_new_structured_format(
     // 2. METREKARE
     static M2_RE: OnceLock<Regex> = OnceLock::new();
     let m2_re = M2_RE.get_or_init(|| Regex::new(r"(?i)\(\s*([\d.,]+)\s*m[²2]?\s*\)").unwrap());
-    let metrekare = if let Some(cap) = m2_re.captures(satir) {
-        let val = cap[1].replace('.', ",");
-        format!("{} m²", val)
+    
+    // Satırdaki tekil m² değerini alalım (parantez içinden veya en*boy/10000)
+    let satir_m2_val: Option<f64> = if let Some(cap) = m2_re.captures(satir) {
+        cap[1].replace(',', ".").parse::<f64>().ok()
+    } else {
+        match (&en_val, &boy_val) {
+            (Some(en), Some(boy)) => {
+                if let (Ok(e), Ok(b)) = (en.parse::<f64>(), boy.parse::<f64>()) {
+                    Some(e * b / 10000.0)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    };
+
+    let metrekare = if let Some(val) = satir_m2_val {
+        let s = format!("{:.2}", val).replace('.', ",");
+        let s = s.trim_end_matches('0').trim_end_matches(',');
+        format!("{} m²", s)
     } else {
         format_metrekare(bekleyen)
     };
 
     // 3. ADET
+    // Kural:
+    // a) Eğer satırda açıkça "X adet" yazıyorsa onu al
+    // b) Açıkça yazmıyorsa, BEKLEYEN_SIPARIS (toplam m²) ile satırdaki tekil m² değerini oranla:
+    //    oran = bekleyen / satir_m2 -> en yakın tam sayıya yuvarla
     static ADET_RE: OnceLock<Regex> = OnceLock::new();
-    let adet_re = ADET_RE.get_or_init(|| Regex::new(r"(?i)(\d+)\s*adet").unwrap());
-    let (adet_display, print_count) = if let Some(cap) = adet_re.captures(satir) {
-        let count = cap[1].parse::<usize>().unwrap_or(1);
-        (format!("{} ADET", count), if count > 0 { count } else { 1 })
+    let adet_re = ADET_RE.get_or_init(|| Regex::new(r"(?i)\b(\d+)\s*adet\b").unwrap());
+
+    let count = if let Some(cap) = adet_re.captures(satir) {
+        cap[1].parse::<usize>().unwrap_or(1).max(1)
+    } else if let Some(s_m2) = satir_m2_val {
+        if s_m2 > 0.05 {
+            let bek_clean = bekleyen.trim().replace(',', ".");
+            if let Ok(bek_val) = bek_clean.parse::<f64>() {
+                if bek_val > 0.0 {
+                    let ratio = (bek_val / s_m2).round() as usize;
+                    if ratio > 0 { ratio } else { 1 }
+                } else {
+                    1
+                }
+            } else {
+                1
+            }
+        } else {
+            1
+        }
     } else {
-        ("1 ADET".to_string(), 1)
+        1
     };
+
+    let (adet_display, print_count) = (format!("{} ADET", count), count);
 
     // 4. İŞLEM (Şekil + Kenar)
     static SEKIL_RE: OnceLock<Regex> = OnceLock::new();
@@ -388,21 +428,21 @@ fn extract_ebat_from_text(text: &mut String) -> String {
 }
 
 fn extract_adet(remaining: &mut String) -> String {
-    static ADET_RE: OnceLock<Regex> = OnceLock::new();
-    static COLON_RE: OnceLock<Regex> = OnceLock::new();
+    static ADET_PREFIX_RE: OnceLock<Regex> = OnceLock::new();
+    static ADET_SUFFIX_RE: OnceLock<Regex> = OnceLock::new();
 
-    let adet_re = ADET_RE.get_or_init(|| Regex::new(r"(?i)(\d+)\s*adet").unwrap());
-    let colon_re = COLON_RE.get_or_init(|| Regex::new(r":\s*(\d+)\s*(?i:adet)?").unwrap());
+    let adet_prefix_re = ADET_PREFIX_RE.get_or_init(|| Regex::new(r"(?i)\badet\s*[:=]\s*(\d+)\b").unwrap());
+    let adet_suffix_re = ADET_SUFFIX_RE.get_or_init(|| Regex::new(r"(?i)\b(\d+)\s*adet\b").unwrap());
 
     let clone = remaining.clone();
-    if let Some(cap) = adet_re.captures(&clone) {
+    if let Some(cap) = adet_prefix_re.captures(&clone) {
         let matched = cap.get(0).unwrap().as_str().to_string();
         let num = cap[1].to_string();
         *remaining = remaining.replace(&matched, " ");
         return format!("{} ADET", num);
     }
     let clone = remaining.clone();
-    if let Some(cap) = colon_re.captures(&clone) {
+    if let Some(cap) = adet_suffix_re.captures(&clone) {
         let matched = cap.get(0).unwrap().as_str().to_string();
         let num = cap[1].to_string();
         *remaining = remaining.replace(&matched, " ");
@@ -824,7 +864,7 @@ mod cari_tests {
 
     #[test]
     fn truncate_cari_adds_ellipsis() {
-        let long = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789EXTRA";
+        let long = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789EXTRA_VERY_LONG_UNVAN";
         let out = truncate_cari(long, 45);
         assert!(out.ends_with("..."));
         assert_eq!(out.chars().count(), 45);
@@ -884,5 +924,49 @@ mod musteri_tests {
             parse_musteri("150*200 ADET", "MŞ Mehmet Kaygusuz"),
             "MŞ: MEHMET KAYGUSUZ"
         );
+    }
+
+    #[test]
+    fn structured_format_adet_from_bekleyen_m2() {
+        let rules = SatirRules::default();
+
+        // 1 adet durum: 3.88 m² tek halı, bekleyen de 3.88
+        let p1 = parse_new_structured_format(
+            "MEHMET KIŞ | En: 155cm, Uzunluk: 250cm (3.88m²) | Şekil: Dikdörtgen | Kenar: Saçak",
+            "HALI ENRULO",
+            "3.88",
+            "",
+            "CARİ ADI",
+            &rules,
+        );
+        assert_eq!(p1.adet, "1 ADET");
+        assert_eq!(p1.print_count, 1);
+        assert_eq!(p1.ebat, "155*250");
+        assert_eq!(p1.metrekare, "3,88 m²");
+
+        // 2 adet durum: 3.88 m² tek halı, bekleyen 7.76 m²
+        let p2 = parse_new_structured_format(
+            "MEHMET KIŞ | En: 155cm, Uzunluk: 250cm (3.88m²) | Şekil: Dikdörtgen | Kenar: Saçak",
+            "HALI ENRULO",
+            "7.76",
+            "",
+            "CARİ ADI",
+            &rules,
+        );
+        assert_eq!(p2.adet, "2 ADET");
+        assert_eq!(p2.print_count, 2);
+        assert_eq!(p2.metrekare, "3,88 m²");
+
+        // Açıkça adet belirtilmişse: "2 adet"
+        let p3 = parse_new_structured_format(
+            "MEHMET KIŞ | En: 155cm, Uzunluk: 250cm (3.88m²) 2 adet | Şekil: Dikdörtgen | Kenar: Saçak",
+            "HALI ENRULO",
+            "3.88",
+            "",
+            "CARİ ADI",
+            &rules,
+        );
+        assert_eq!(p3.adet, "2 ADET");
+        assert_eq!(p3.print_count, 2);
     }
 }
