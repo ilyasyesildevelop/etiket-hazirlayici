@@ -112,7 +112,7 @@ fn match_islem_keywords(remaining: &mut String, text: &str, keywords: &[String])
 fn is_new_structured_format(satir: &str) -> bool {
     static NEW_FMT_RE: OnceLock<Regex> = OnceLock::new();
     let re = NEW_FMT_RE.get_or_init(|| Regex::new(r"(?i)\ben\s*:\s*\d+").unwrap());
-    re.is_match(satir)
+    satir.contains('|') || re.is_match(satir)
 }
 
 fn parse_new_structured_format(
@@ -125,37 +125,77 @@ fn parse_new_structured_format(
 ) -> ParsedSatir {
     let is_enrulo = malz.to_uppercase().contains("ENRULO");
 
-    // 1. EBAT (En x Uzunluk/Boy)
+    // 1. EBAT
+    static EN_BOY_COMB_RE: OnceLock<Regex> = OnceLock::new();
     static EN_RE: OnceLock<Regex> = OnceLock::new();
     static BOY_RE: OnceLock<Regex> = OnceLock::new();
+    static RECT_FALLBACK_RE: OnceLock<Regex> = OnceLock::new();
+
+    let en_boy_comb_re = EN_BOY_COMB_RE.get_or_init(|| {
+        Regex::new(r"(?i)\ben\s*:\s*(\d+)\s*[xX*×]\s*(\d+)").unwrap()
+    });
     let en_re = EN_RE.get_or_init(|| Regex::new(r"(?i)\ben\s*:\s*(\d+)").unwrap());
     let boy_re = BOY_RE.get_or_init(|| Regex::new(r"(?i)\b(?:uzunluk|boy)\s*:\s*(\d+)").unwrap());
+    let rect_fallback_re = RECT_FALLBACK_RE.get_or_init(|| {
+        Regex::new(r"(\d+)\s*[xX*×]\s*(\d+)").unwrap()
+    });
 
-    let en_val = en_re.captures(satir).map(|c| c[1].to_string());
-    let boy_val = boy_re.captures(satir).map(|c| c[1].to_string());
-
-    let ebat = match (&en_val, &boy_val) {
-        (Some(en), Some(boy)) => format!("{}*{}", en, boy),
-        _ => String::new(),
+    let (en_val, boy_val, ebat) = if let Some(cap) = en_boy_comb_re.captures(satir) {
+        let e = cap[1].to_string();
+        let b = cap[2].to_string();
+        let ebat_str = format!("{}*{}", e, b);
+        (Some(e), Some(b), ebat_str)
+    } else if let (Some(en_cap), Some(boy_cap)) = (en_re.captures(satir), boy_re.captures(satir)) {
+        let e = en_cap[1].to_string();
+        let b = boy_cap[1].to_string();
+        let ebat_str = format!("{}*{}", e, b);
+        (Some(e), Some(b), ebat_str)
+    } else {
+        // Fallback: boru (|) parçalarına bakalım ("Not:" veya müşteri olmayan parçadan)
+        let mut found_ebat = None;
+        for part in satir.split('|') {
+            let p_trim = part.trim();
+            let p_upper = p_trim.to_uppercase();
+            if p_upper.starts_with("NOT:") || p_upper.contains("MST") || p_upper.contains("MŞ") {
+                continue;
+            }
+            if let Some(cap) = rect_fallback_re.captures(p_trim) {
+                let e = cap[1].to_string();
+                let b = cap[2].to_string();
+                found_ebat = Some((Some(e.clone()), Some(b.clone()), format!("{}*{}", e, b)));
+                break;
+            }
+        }
+        found_ebat.unwrap_or_else(|| {
+            let mut copy = satir.to_string();
+            let e = extract_ebat_from_text(&mut copy);
+            (None, None, e)
+        })
     };
 
     // 2. METREKARE
     static M2_RE: OnceLock<Regex> = OnceLock::new();
     let m2_re = M2_RE.get_or_init(|| Regex::new(r"(?i)\(\s*([\d.,]+)\s*m[²2]?\s*\)").unwrap());
-    
-    // Satırdaki tekil m² değerini alalım (parantez içinden veya en*boy/10000)
-    let satir_m2_val: Option<f64> = if let Some(cap) = m2_re.captures(satir) {
-        cap[1].replace(',', ".").parse::<f64>().ok()
-    } else {
-        match (&en_val, &boy_val) {
-            (Some(en), Some(boy)) => {
-                if let (Ok(e), Ok(b)) = (en.parse::<f64>(), boy.parse::<f64>()) {
-                    Some(e * b / 10000.0)
-                } else {
-                    None
-                }
+
+    // Satırdaki tekil m² değerini alalım:
+    // Öncelik 1: en * boy / 10000.0 (en doğru geometrik m²)
+    // Öncelik 2: parantez içindeki (Xm²)
+    let satir_m2_val: Option<f64> = match (&en_val, &boy_val) {
+        (Some(en), Some(boy)) => {
+            if let (Ok(e), Ok(b)) = (en.parse::<f64>(), boy.parse::<f64>()) {
+                Some(e * b / 10000.0)
+            } else if let Some(cap) = m2_re.captures(satir) {
+                cap[1].replace(',', ".").parse::<f64>().ok()
+            } else {
+                None
             }
-            _ => None,
+        }
+        _ => {
+            if let Some(cap) = m2_re.captures(satir) {
+                cap[1].replace(',', ".").parse::<f64>().ok()
+            } else {
+                None
+            }
         }
     };
 
@@ -169,7 +209,7 @@ fn parse_new_structured_format(
 
     // 3. ADET
     // Kural:
-    // a) Eğer satırda açıkça "X adet" yazıyorsa onu al
+    // a) Eğer satırda açıkça "X adet" yazıyorsa onu al (Örn: "3 ADET OLACAK", "2 adet")
     // b) Açıkça yazmıyorsa, BEKLEYEN_SIPARIS (toplam m²) ile satırdaki tekil m² değerini oranla:
     //    oran = bekleyen / satir_m2 -> en yakın tam sayıya yuvarla
     static ADET_RE: OnceLock<Regex> = OnceLock::new();
@@ -205,8 +245,38 @@ fn parse_new_structured_format(
     let sekil_re = SEKIL_RE.get_or_init(|| Regex::new(r"(?i)\b(?:şekil|sekil)\s*:\s*([a-zA-ZçÇğĞıİöÖşŞüÜ]+)").unwrap());
     let kenar_re = KENAR_RE.get_or_init(|| Regex::new(r"(?i)\bkenar\s*:\s*([a-zA-ZçÇğĞıİöÖşŞüÜ]+)").unwrap());
 
-    let sekil = sekil_re.captures(satir).map(|c| c[1].to_uppercase()).unwrap_or_default();
-    let kenar = kenar_re.captures(satir).map(|c| c[1].to_uppercase()).unwrap_or_default();
+    let mut sekil = sekil_re.captures(satir).map(|c| c[1].to_uppercase()).unwrap_or_default();
+    let mut kenar = kenar_re.captures(satir).map(|c| c[1].to_uppercase()).unwrap_or_default();
+
+    let upper_satir = satir.to_uppercase();
+
+    // "şekil:" etiketi yoksa serbest metindeki şekil kelimelerine bak
+    if sekil.is_empty() {
+        if upper_satir.contains("OVAL") {
+            sekil = "OVAL".to_string();
+        } else if upper_satir.contains("YUVARLAK") || upper_satir.contains("DAIRE") || upper_satir.contains("DAİRE") {
+            sekil = "YUVARLAK".to_string();
+        } else if upper_satir.contains("DİKDÖRTGEN") || upper_satir.contains("DIKDORTGEN") {
+            sekil = "DİKDÖRTGEN".to_string();
+        } else if upper_satir.contains("KARE") {
+            sekil = "KARE".to_string();
+        }
+    }
+
+    // "kenar:" etiketi yoksa serbest metindeki kenar/işlem kelimelerine bak
+    if kenar.is_empty() {
+        if upper_satir.contains("SPOR SAÇAK") || upper_satir.contains("SPOR SACAK") {
+            kenar = "SPOR SAÇAK".to_string();
+        } else if upper_satir.contains("SAÇAK") || upper_satir.contains("SACAK") {
+            kenar = "SAÇAK".to_string();
+        } else if upper_satir.contains("OVERLOK") || upper_satir.contains("OVERLOOK") {
+            kenar = "OVERLOK".to_string();
+        } else if upper_satir.contains("KATLAMA") {
+            kenar = "KATLAMA".to_string();
+        } else if upper_satir.contains("İŞLEMSİZ") || upper_satir.contains("ISLEMSIZ") {
+            kenar = "İŞLEMSİZ".to_string();
+        }
+    }
 
     let islem = if sekil.contains("OVAL") {
         if kenar.contains("SAÇAK") || kenar.contains("SACAK") {
@@ -218,9 +288,11 @@ fn parse_new_structured_format(
         } else {
             "OVAL".to_string()
         }
-    } else if sekil.contains("YUVARLAK") || sekil.contains("DAIRE") {
+    } else if sekil.contains("YUVARLAK") || sekil.contains("DAIRE") || sekil.contains("DAİRE") {
         if kenar.contains("OVERLOK") {
             "YUVARLAK OVERLOK".to_string()
+        } else if kenar.contains("SPOR SAÇAK") || kenar.contains("SPOR SACAK") {
+            "YUVARLAK SPOR SAÇAK".to_string()
         } else if kenar.contains("SAÇAK") || kenar.contains("SACAK") {
             "YUVARLAK SAÇAK".to_string()
         } else if kenar.contains("KATLAMA") {
@@ -229,12 +301,14 @@ fn parse_new_structured_format(
             "YUVARLAK".to_string()
         }
     } else {
-        if kenar.contains("KATLAMA") {
-            "KATLAMA".to_string()
+        if kenar.contains("SPOR SAÇAK") || kenar.contains("SPOR SACAK") {
+            "SPOR SAÇAK".to_string()
         } else if kenar.contains("SAÇAK") || kenar.contains("SACAK") {
             "SAÇAKLI".to_string()
         } else if kenar.contains("OVERLOK") {
             "OVERLOK".to_string()
+        } else if kenar.contains("KATLAMA") {
+            "KATLAMA".to_string()
         } else if !kenar.is_empty() {
             standardize_islem(&kenar)
         } else {
@@ -263,7 +337,7 @@ fn parse_new_structured_format(
 
     // 6. DİĞER AÇIKLAMALAR / NOT
     static NOT_RE: OnceLock<Regex> = OnceLock::new();
-    let not_re = NOT_RE.get_or_init(|| Regex::new(r"(?i)\bnot\s*:\s*([^|]+)").unwrap());
+    let not_re = NOT_RE.get_or_init(|| Regex::new(r"(?i)\bnot\s*[:.\-]?\s*([^|]+)").unwrap());
     let mut diger_aciklamalar = not_re.captures(satir)
         .map(|c| c[1].trim().to_string())
         .unwrap_or_default();
@@ -522,7 +596,7 @@ fn extract_islem(remaining: &mut String, islem_keywords: &[String]) -> String {
     }
     
     // 3. Banko ve Henna Nubuk kontrolü
-    let mut islem = String::new();
+    let islem;
     
     static HENNA_RE: OnceLock<Regex> = OnceLock::new();
     static BANKO_RE: OnceLock<Regex> = OnceLock::new();
@@ -572,14 +646,14 @@ fn extract_islem(remaining: &mut String, islem_keywords: &[String]) -> String {
     }
 }
 
-/// MŞ / MS / Müşteri etiketinden isim çıkarır (satırın herhangi bir yerinde).
+/// MŞ / MS / Müşteri / MST etiketinden isim çıkarır (satırın herhangi bir yerinde).
 fn find_musteri_in_text(text: &str) -> Option<(String, String)> {
     let text = text.trim();
     if text.is_empty() {
         return None;
     }
     static MARKER_RE: OnceLock<Regex> = OnceLock::new();
-    let marker_re = MARKER_RE.get_or_init(|| Regex::new(r"(?i)[*]?\s*(?:müşteri|musteri|m[sş][tş]?)\s*[:.\s-]*").unwrap());
+    let marker_re = MARKER_RE.get_or_init(|| Regex::new(r"(?i)[*\/]*\s*(?:müşteri|musteri|m[sş][tş]?)\s*[:.\s\-\*\/]*").unwrap());
     
     let marker = marker_re.find(text)?;
     let (name, consumed) = take_customer_name_segment(&text[marker.end()..]);
@@ -968,5 +1042,132 @@ mod musteri_tests {
         );
         assert_eq!(p3.adet, "2 ADET");
         assert_eq!(p3.print_count, 2);
+    }
+
+    #[test]
+    fn mobile_app_rows_26_to_32() {
+        let rules = SatirRules::default();
+
+        // Row 26: MST*Betül AVCU | En: 95X260 | (4m2) | Overlok
+        let r26 = parse_satir_aciklama(
+            "MST*Betül AVCU | En: 95X260 | (4m2) | Overlok",
+            "VNT 2702 GOLD _ 100 ENRULO",
+            "2.47",
+            "",
+            "MATE CONCEPT",
+            &rules,
+            &[],
+        );
+        assert_eq!(r26.ebat, "95*260");
+        assert_eq!(r26.adet, "1 ADET");
+        assert_eq!(r26.print_count, 1);
+        assert_eq!(r26.metrekare, "2,47 m²");
+        assert_eq!(r26.islem, "OVERLOK");
+        assert_eq!(r26.musteri_adi, "MŞ: BETÜL AVCU");
+        assert_eq!(r26.diger_aciklamalar, "");
+
+        // Row 27: MST*DEMET ÇINAR DEMİR | En: 100X300 | (3m2) | Overlok
+        let r27 = parse_satir_aciklama(
+            "MST*DEMET ÇINAR DEMİR | En: 100X300 | (3m2) | Overlok",
+            "VNT 2702 GOLD _ 100 ENRULO",
+            "3",
+            "",
+            "MATE CONCEPT",
+            &rules,
+            &[],
+        );
+        assert_eq!(r27.ebat, "100*300");
+        assert_eq!(r27.adet, "1 ADET");
+        assert_eq!(r27.print_count, 1);
+        assert_eq!(r27.metrekare, "3 m²");
+        assert_eq!(r27.islem, "OVERLOK");
+        assert_eq!(r27.musteri_adi, "MŞ: DEMET ÇINAR DEMİR");
+
+        // Row 28: 3 ADET OLACAK ///MST*Ayşegül Oğuz | 80*200 | (1.6m²) | Overlok
+        let r28 = parse_satir_aciklama(
+            "3 ADET OLACAK ///MST*Ayşegül Oğuz | 80*200 | (1.6m²) | Overlok",
+            "VNT 01 NATURAL MOCHA _ 80 ENRULO",
+            "4.8",
+            "",
+            "MATE CONCEPT",
+            &rules,
+            &[],
+        );
+        assert_eq!(r28.ebat, "80*200");
+        assert_eq!(r28.adet, "3 ADET");
+        assert_eq!(r28.print_count, 3);
+        assert_eq!(r28.metrekare, "1,6 m²");
+        assert_eq!(r28.islem, "OVERLOK");
+        assert_eq!(r28.musteri_adi, "MŞ: AYŞEGÜL OĞUZ");
+
+        // Row 29: MST*FATİH DESTEK | En: 100X250 | (2,5m2)  Overlok | Not: ACİL
+        let r29 = parse_satir_aciklama(
+            "MST*FATİH DESTEK | En: 100X250 | (2,5m2)  Overlok | Not: ACİL",
+            "VNT 01 NATURAL MOCHA _ 100 ENRULO",
+            "2.5",
+            "",
+            "MATE CONCEPT",
+            &rules,
+            &[],
+        );
+        assert_eq!(r29.ebat, "100*250");
+        assert_eq!(r29.adet, "1 ADET");
+        assert_eq!(r29.print_count, 1);
+        assert_eq!(r29.metrekare, "2,5 m²");
+        assert_eq!(r29.islem, "OVERLOK");
+        assert_eq!(r29.musteri_adi, "MŞ: FATİH DESTEK");
+        assert_eq!(r29.diger_aciklamalar, "ACİL");
+
+        // Row 30: MST*Eylül Arslan | En: 200X200 | (4m2) | Yuvarlak | Overlok
+        let r30 = parse_satir_aciklama(
+            "MST*Eylül Arslan | En: 200X200 | (4m2) | Yuvarlak | Overlok",
+            "VNT 01 NATURAL MOCHA _ 200 ENRULO",
+            "4",
+            "",
+            "MATE CONCEPT",
+            &rules,
+            &[],
+        );
+        assert_eq!(r30.ebat, "200*200");
+        assert_eq!(r30.adet, "1 ADET");
+        assert_eq!(r30.print_count, 1);
+        assert_eq!(r30.metrekare, "4 m²");
+        assert_eq!(r30.islem, "YUVARLAK OVERLOK");
+        assert_eq!(r30.musteri_adi, "MŞ: EYLÜL ARSLAN");
+
+        // Row 31: MST*SELMA ARAL | En: 80X450 | Dikdörtgen | Saçak
+        let r31 = parse_satir_aciklama(
+            "MST*SELMA ARAL | En: 80X450 | Dikdörtgen | Saçak",
+            "TRZ 03 MULTY _ 80 ENRULO",
+            "3.6",
+            "",
+            "NUN HALI",
+            &rules,
+            &[],
+        );
+        assert_eq!(r31.ebat, "80*450");
+        assert_eq!(r31.adet, "1 ADET");
+        assert_eq!(r31.print_count, 1);
+        assert_eq!(r31.metrekare, "3,6 m²");
+        assert_eq!(r31.islem, "SAÇAKLI");
+        assert_eq!(r31.musteri_adi, "MŞ: SELMA ARAL");
+
+        // Row 32: En: 160X200 | Dikdörtgen | Overlok | Not: 140x200 olacak
+        let r32 = parse_satir_aciklama(
+            "En: 160X200 | Dikdörtgen | Overlok | Not: 140x200 olacak",
+            "ZEN 01 BEIGE _ 160 ENRULO",
+            "3.2",
+            "",
+            "EMREHALI DÜNYASI",
+            &rules,
+            &[],
+        );
+        assert_eq!(r32.ebat, "160*200");
+        assert_eq!(r32.adet, "1 ADET");
+        assert_eq!(r32.print_count, 1);
+        assert_eq!(r32.metrekare, "3,2 m²");
+        assert_eq!(r32.islem, "OVERLOK");
+        assert_eq!(r32.musteri_adi, "");
+        assert_eq!(r32.diger_aciklamalar, "140x200 olacak");
     }
 }

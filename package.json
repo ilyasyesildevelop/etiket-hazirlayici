@@ -7,7 +7,7 @@
     "dev": ".\\node_modules\\.bin\\tauri dev",
     "build:debug": ".\\node_modules\\.bin\\tauri build -d --no-bundle",
     "build:release": "cmd /c \"set \"RUST_MIN_STACK=67108864\" && set \"CARGO_BUILD_JOBS=1\" && .\\node_modules\\.bin\\tauri build --no-bundle\"",
-    "package:portable": "npm run build:release && powershell -NoProfile -Command \"if(-not (Test-Path dist)){New-Item -ItemType Directory -Path dist | Out-Null}; if(-not (Test-Path etiket-hazırlayici)){New-Item -ItemType Directory -Path etiket-hazırlayici | Out-Null}; Copy-Item -Path 'src-tauri\\target\\release\\etiket-hazirlayici.exe' -Destination 'dist\\Etiket Hazırla.exe' -Force; Copy-Item -Path 'src-tauri\\target\\release\\etiket-hazirlayici.exe' -Destination 'etiket-hazırlayici\\Etiket Hazırla.exe' -Force; Copy-Item -Path 'src-tauri\\target\\release\\etiket-hazirlayici.exe' -Destination 'Etiket Hazırla.exe' -Force; Copy-Item -Path 'src-tauri\\target\\release\\etiket-hazirlayici.exe' -Destination 'C:\\Users\\Ekomak1\\OneDrive\\Uygulamalar\\Etiket Hazırla.exe' -Force -ErrorAction SilentlyContinue\"",
+    "package:portable": "npm run build:release && powershell -NoProfile -Command \"if(-not (Test-Path dist)){New-Item -ItemType Directory -Path dist | Out-Null}; Copy-Item -Path 'src-tauri\\target\\release\\etiket-hazirlayici.exe' -Destination 'dist\\Etiket Hazırla.exe' -Force\"",
     "package:installer": "npm run build:release && \"C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe\" \"src-tauri/etiket_hazirlayici_installer.iss\""
   },
   "devDependencies": {
